@@ -1,0 +1,6 @@
+# Design-Referenzbilder (gehören nicht ins Deployment)
+*.jpg
+*.jpeg
+
+# macOS
+.DS_Store

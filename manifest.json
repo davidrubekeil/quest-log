@@ -1,0 +1,15 @@
+{
+  "name": "Quest-Log",
+  "short_name": "Quest-Log",
+  "description": "Persönliches Feldprotokoll für Tagesaufgaben, Listen und Quests",
+  "lang": "de",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F0EEE6",
+  "theme_color": "#F0EEE6",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

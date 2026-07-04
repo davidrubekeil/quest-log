@@ -1,0 +1,462 @@
+/* Quest-Log — brutalistische Struktur + Quest-Akzente
+   Persönliches Projekt-Register: Quests (hierarchisch) + Listen. */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #F0EEE6;
+  --ink:   #1C1B18;
+  --rule:  #DEDACB;
+  --muted: #8B8577;
+  --red:   #A6352A;
+  --blue:  #3D5A73;
+
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--mono);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input { font: inherit; color: inherit; }
+
+.ico { width: 16px; height: 16px; display: block; }
+
+/* ---------- Kopfzeile ---------- */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px 12px;
+  background: var(--paper);
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.app-title {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.app-date {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- Inhalt ---------- */
+
+.view {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px 14px calc(env(safe-area-inset-bottom) + 88px);
+}
+
+.empty {
+  padding: 12px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- Tab-Leiste ---------- */
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  background: var(--paper);
+  border-top: 1.5px solid var(--ink);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 0 9px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  border-right: 1px solid var(--rule);
+}
+
+.tab:last-child { border-right: none; }
+
+.tab-num { font-size: 9px; letter-spacing: 0.14em; }
+
+.tab.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ---------- Quest-Board-Kopf: zentraler Titel + Main/Side-Reiter ---------- */
+
+.board-title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  padding: 6px 0 12px;
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1.5px solid var(--ink);
+  margin-bottom: 14px;
+}
+
+.seg button {
+  padding: 10px 0;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--muted);
+  border-right: 1.5px solid var(--ink);
+}
+
+.seg button:last-child { border-right: none; }
+
+.seg button.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.seg .seg-count {
+  font-size: 9px;
+  opacity: 0.7;
+  margin-left: 5px;
+}
+
+/* ---------- Blöcke (Quests, Listen) ---------- */
+
+.block {
+  border: 1px solid var(--ink);
+  margin-bottom: 14px;
+  background: var(--paper);
+}
+
+/* Akzent: schmaler linker Rand + getönter Header, keine Vollflächen */
+.accented { border-left: 3px solid var(--accent); }
+
+.block-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--accent-tint, transparent);
+}
+
+.block-head h2 {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  overflow-wrap: anywhere;
+}
+
+.block-head h2.done { color: var(--muted); }
+
+.block-ico { display: flex; color: var(--accent, var(--ink)); }
+
+/* ---------- Streak-Anzeige ---------- */
+
+.streak {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.streak .ico { width: 12px; height: 12px; }
+
+.streak.on { color: var(--accent, var(--ink)); }
+
+/* ---------- Zeilen (Items, Schritte, Knoten) ---------- */
+
+.items { list-style: none; }
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.row:last-child { border-bottom: none; }
+
+.row > * { position: relative; z-index: 1; }
+
+.checkbox {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  margin-top: 1px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+}
+
+.checkbox .ico {
+  width: 13px;
+  height: 13px;
+  color: #fff;
+  opacity: 0;
+}
+
+.done > .checkbox,
+.done > .row > .checkbox,
+.node.done > .node-row > .checkbox,
+.block-head.done .checkbox { background: var(--ink); }
+.done > .checkbox .ico,
+.done > .row > .checkbox .ico,
+.node.done > .node-row > .checkbox .ico,
+.block-head.done .checkbox .ico { opacity: 1; }
+
+.checkbox.static { cursor: default; }
+
+.row-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  padding-top: 1px;
+  overflow-wrap: anywhere;
+}
+
+.done > .row > .row-text,
+.node.done > .node-row > .row-text { color: var(--muted); }
+
+.row-time {
+  flex: none;
+  padding-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.35;
+}
+
+.del .ico { width: 11px; height: 11px; }
+.del:active { opacity: 0.9; }
+
+/* ---------- Stempel „ERLEDIGT" ---------- */
+
+.stamp {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: 30%;
+  transform: translateY(-50%) rotate(-8deg);
+  padding: 2px 8px 2px 11px;
+  border: 2px solid var(--red);
+  color: var(--red);
+  opacity: 0.3;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.block-head .stamp { right: 24%; font-size: 13px; }
+
+/* ---------- Eingabezeilen ---------- */
+
+.add-row {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--rule);
+}
+
+.add-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  font-size: 16px; /* verhindert iOS-Zoom beim Fokussieren */
+  outline: none;
+}
+
+.add-row input::placeholder { color: var(--muted); opacity: 0.7; }
+
+.add-row button {
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border-left: 1px solid var(--rule);
+}
+
+.add-row button .ico { width: 14px; height: 14px; }
+.add-row button:active { color: var(--ink); }
+
+/* Eigenständige Zeile für neue Liste/Quest */
+.add-block {
+  border: 1px dashed var(--muted);
+  margin-bottom: 14px;
+}
+
+.add-block input { letter-spacing: 0.02em; }
+
+/* ---------- Listen ---------- */
+
+.list-head { cursor: pointer; }
+
+.chev {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chev .ico {
+  width: 12px;
+  height: 12px;
+  transform: rotate(-90deg);
+  transition: transform 0.12s;
+}
+
+.open > .chev .ico,
+.open > .block-head .chev .ico,
+.node.open > .node-row .chev .ico { transform: none; }
+
+.count {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+/* ---------- Quests: Fortschritt ---------- */
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.progress-row .pct { flex: none; min-width: 34px; text-align: right; color: var(--accent, var(--ink)); }
+
+.track {
+  flex: 1;
+  height: 3px;
+  background: var(--rule);
+}
+
+.fill {
+  height: 100%;
+  background: var(--accent, var(--ink));
+}
+
+/* ---------- Quests: hierarchische Schritte (Reiter/Spalten/Hierarchien) ---------- */
+
+.tree { list-style: none; }
+
+.node { list-style: none; }
+
+.node-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px 7px 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.node-row .chev { width: 20px; height: 20px; }
+.node-row .chev .ico { width: 10px; height: 10px; }
+
+/* Verschachtelung: je Ebene Einzug + linke Spaltenlinie */
+.subtree {
+  list-style: none;
+  margin-left: 15px;
+  border-left: 1.5px solid var(--rule);
+}
+
+.node-row .checkbox { width: 17px; height: 17px; margin-top: 0; }
+.node-row .checkbox .ico { width: 11px; height: 11px; }
+
+/* Zusammenfassender Fortschritts-Marker bei Knoten mit Unterschritten */
+.branch-mark {
+  flex: none;
+  min-width: 34px;
+  padding: 1px 5px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-align: center;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+
+.branch-mark.full {
+  color: var(--accent, var(--ink));
+  border-color: currentColor;
+}
+
+.node-row .row-text { font-size: 13px; padding-top: 0; }
+
+/* kompakte Eingabezeile für Unterschritte */
+.add-sub { list-style: none; }
+
+.add-row.thin { border-top: none; }
+.add-row.thin input { padding: 7px 8px; font-size: 15px; }
+.add-row.thin button { width: 34px; }
