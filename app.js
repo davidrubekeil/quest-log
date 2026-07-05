@@ -1,7 +1,7 @@
 /* Quest-Log — App-Logik
-   Persönliches Projekt-Register: Quests (hierarchisch, mit Deadline/Priorität) + Listen.
-   Persistenz: localStorage, Key questlog-state-v3.
-   Ältere v1/v2-Daten werden beim ersten Laden on-the-fly migriert. */
+   Persönliches Projekt-Register (Mac): Quests (hierarchisch, mit Deadline/Priorität
+   bis in die Unterschritte) + Listen. Dringendste Fristen wandern automatisch nach oben.
+   Persistenz: localStorage, Key questlog-state-v3. v1/v2 werden migriert. */
 
 (() => {
   'use strict';
@@ -38,10 +38,9 @@
     return isNaN(d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
 
-  /* Datums-Helfer auf Basis "YYYY-MM-DD" (lokale Zeitzone, taggenau) */
   const isDateStr = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
   const parseDate = ds => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d); };
-  const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 864e5); // b − a in Tagen
+  const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 864e5);
   const daysUntil = ds => dayDiff(todayStr(), ds);
   const fmtShort = ds => { const [, m, d] = ds.split('-'); return `${d}.${m}.`; };
   const fmtRest = n =>
@@ -84,16 +83,17 @@
 
   /* ---------- Baum-Helfer (Schritte / Unterschritte, beliebig tief) ---------- */
 
-  const newNode = text => ({ id: uid(), text, done: false, doneAt: null, steps: [], open: false });
+  const newNode = text => ({
+    id: uid(), text, done: false, doneAt: null,
+    priority: 'mittel', deadline: null, steps: [], open: false,
+  });
 
   const isLeaf = n => n.steps.length === 0;
 
-  /* Abgeleiteter Erledigt-Zustand: Blatt = eigenes done; Ast = alle Kinder erledigt. */
   function isNodeDone(n) {
     return isLeaf(n) ? !!n.done : n.steps.every(isNodeDone);
   }
 
-  /* Zählt Blätter (echte Schritte) unter einem Knoten. */
   function countLeaves(n) {
     if (isLeaf(n)) return { done: n.done ? 1 : 0, total: 1 };
     return n.steps.reduce((a, c) => {
@@ -109,11 +109,43 @@
     }, { done: 0, total: 0 });
   }
 
-  /* Fortschritt in % über alle Ebenen (Quests ohne Schritte: 0 oder 100). */
   function questPct(q) {
     const { done, total } = questLeaves(q);
     return total ? Math.round(done / total * 100) : (q.done ? 100 : 0);
   }
+
+  /* Dringendste noch offene Frist im Teilbaum (eigene oder aus Unterschritten). */
+  function effDeadline(node) {
+    if (isNodeDone(node)) return null;
+    let best = node.deadline || null;
+    for (const c of node.steps) {
+      const e = effDeadline(c);
+      if (e && (!best || e < best)) best = e;
+    }
+    return best;
+  }
+
+  function questEffDeadline(q) {
+    if (q.done) return null;
+    let best = q.deadline || null;
+    for (const s of q.steps) {
+      const e = effDeadline(s);
+      if (e && (!best || e < best)) best = e;
+    }
+    return best;
+  }
+
+  /* Sortierung: erledigte nach unten, sonst dringendste Frist zuerst, Rest stabil. */
+  function byUrgency(a, b) {
+    const ad = isNodeDone(a), bd = isNodeDone(b);
+    if (ad !== bd) return ad ? 1 : -1;
+    const ae = effDeadline(a), be = effDeadline(b);
+    if (ae && be) return ae < be ? -1 : ae > be ? 1 : 0;
+    if (ae) return -1;
+    if (be) return 1;
+    return 0;
+  }
+  const sortedSteps = arr => arr.slice().sort(byUrgency);
 
   function findNode(nodes, id) {
     for (const n of nodes) {
@@ -131,8 +163,6 @@
     return false;
   }
 
-  /* Quest gilt als erledigt, sobald alle Blätter erledigt sind (100 %).
-     Quests ohne Schritte bleiben manuell abhakbar. */
   function syncQuestDone(q) {
     const { done, total } = questLeaves(q);
     if (total === 0) return;
@@ -147,14 +177,12 @@
 
   const emptyState = () => ({ version: 3, lists: [], quests: [] });
 
-  /* Listen-Items (flach). v1 kann Strings statt Objekte enthalten. */
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
     if (!raw || typeof raw !== 'object') return null;
     return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done };
   }
 
-  /* Quest-Schritte (rekursiv). Alte flache Schritte werden zu Blättern. */
   function normalizeNode(raw) {
     if (typeof raw === 'string') return newNode(raw);
     if (!raw || typeof raw !== 'object') return null;
@@ -165,12 +193,13 @@
       text: String(raw.text ?? raw.name ?? ''),
       done: !!raw.done,
       doneAt: raw.doneAt || null,
+      priority: PRIOS.some(p => p.key === raw.priority) ? raw.priority : 'mittel',
+      deadline: isDateStr(raw.deadline) ? raw.deadline : null,
       steps: kids.map(normalizeNode).filter(Boolean),
       open: !!raw.open,
     };
   }
 
-  /* Bringt v1/v2/v3 in die aktuelle Form; neue Felder bekommen Defaults. */
   function sanitizeState(raw) {
     const s = emptyState();
     if (!raw || typeof raw !== 'object') return s;
@@ -230,19 +259,15 @@
   function questAccent(id) {
     let h = 2166136261;
     for (const c of id) h = ((h ^ c.charCodeAt(0)) * 16777619) >>> 0;
-    const hue = 5 + (h % 13) - 6;          // -1 … 11
-    const lig = 41 + ((h >> 8) % 9) - 4;   // 37 … 45
-    return {
-      line: `hsl(${hue} 60% ${lig}%)`,
-      tint: `hsl(${hue} 60% ${lig}% / 0.09)`,
-    };
+    const hue = 5 + (h % 13) - 6;
+    const lig = 41 + ((h >> 8) % 9) - 4;
+    return { line: `hsl(${hue} 60% ${lig}%)`, tint: `hsl(${hue} 60% ${lig}% / 0.09)` };
   }
 
   /* ---------- Rendering ---------- */
 
   const view = document.getElementById('view');
   const tabbar = document.getElementById('tabbar');
-  const headerDate = document.getElementById('headerDate');
 
   let state = loadState();
   let activeTab = 'quests';
@@ -250,34 +275,39 @@
   let dayStamp = todayStr();
   let refocusSel = null;
 
-  const WEEKDAYS = ['SO', 'MO', 'DI', 'MI', 'DO', 'FR', 'SA'];
-  function renderHeaderDate() {
-    const d = new Date();
-    headerDate.textContent =
-      `${WEEKDAYS[d.getDay()]} ${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
-  }
+  const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
 
   /* Rekursive Schritt-Zeile inkl. beliebig tiefer Unterschritte. */
   function renderNode(node, questId) {
     const leaf = isLeaf(node);
     const done = isNodeDone(node);
     const c = countLeaves(node);
-    const showChildren = node.open;
+    const p = prioOf(node.priority);
+    const eff = effDeadline(node); // dringendste Frist im Teilbaum (rollt hoch)
+    const du = eff ? daysUntil(eff) : null;
 
     const control = leaf
       ? `<button class="checkbox" data-action="toggle-node" data-quest="${questId}" data-id="${node.id}" aria-label="Abhaken">${ICONS.check}</button>`
       : `<span class="branch-mark${done ? ' full' : ''}">${c.done}/${c.total}</span>`;
 
-    return `<li class="node${done ? ' done' : ''}${showChildren ? ' open' : ''}">
+    return `<li class="node${done ? ' done' : ''}${node.open ? ' open' : ''}">
       <div class="node-row">
         <button class="chev" data-action="toggle-open" data-quest="${questId}" data-id="${node.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         ${control}
-        <span class="row-text">${esc(node.text)}</span>
+        ${node.priority !== 'mittel' ? dotHtml(p) : ''}
+        <span class="row-text editable" data-edit="node-text" data-quest="${questId}" data-id="${node.id}">${esc(node.text)}</span>
+        ${du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : ''}
         ${leaf && node.doneAt ? `<span class="row-time">${timeHM(node.doneAt)}</span>` : ''}
         <button class="del" data-action="del-node" data-quest="${questId}" data-id="${node.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
-      ${showChildren ? `<ul class="subtree">
-        ${node.steps.map(k => renderNode(k, questId)).join('')}
+      ${node.open ? `<ul class="subtree">
+        <li class="meta-row">
+          <button class="prio-btn" data-action="cycle-prio-node" data-quest="${questId}" data-node="${node.id}">${dotHtml(p)}${p.label}</button>
+          <label class="date-field">Termin
+            <input type="date" data-field="node-deadline" data-quest="${questId}" data-node="${node.id}" value="${node.deadline || ''}">
+          </label>
+        </li>
+        ${sortedSteps(node.steps).map(k => renderNode(k, questId)).join('')}
         <li class="add-sub">
           <form class="add-row thin" data-action="add-sub" data-quest="${questId}" data-parent="${node.id}">
             <input type="text" placeholder="Unterschritt …" autocomplete="off" enterkeyhint="done">
@@ -288,7 +318,6 @@
     </li>`;
   }
 
-  /* Zeitbalken Start → Deadline mit Heute-Marker; nur bei gesetzter Deadline. */
   function timeRow(q) {
     if (!q.deadline) return '';
     const start = q.start || q.createdAt;
@@ -312,7 +341,8 @@
     const pct = questPct(q);
     const hasSteps = total > 0;
     const p = prioOf(q.priority);
-    const du = q.deadline ? daysUntil(q.deadline) : null;
+    const eff = questEffDeadline(q);
+    const du = eff ? daysUntil(eff) : null;
 
     const control = hasSteps
       ? ''
@@ -321,9 +351,9 @@
     return `<section class="block accented${q.open ? ' open' : ''}" style="--accent:${a.line};--accent-tint:${a.tint}">
       <header class="block-head${q.done ? ' done' : ''}">
         <button class="chev" data-action="toggle-quest-open" data-id="${q.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
-        <span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>
+        ${dotHtml(p)}
         ${control}
-        <h2 class="${q.done ? 'done' : ''}">${esc(q.title)}</h2>
+        <h2 class="editable ${q.done ? 'done' : ''}" data-edit="quest-title" data-id="${q.id}">${esc(q.title)}</h2>
         ${q.done ? '<span class="stamp">Erledigt</span>' : ''}
         <span class="qpct">${pct}%</span>
         ${du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : ''}
@@ -331,9 +361,7 @@
       </header>
       ${q.open ? `
         <div class="meta-row">
-          <button class="prio-btn" data-action="cycle-prio" data-id="${q.id}">
-            <span class="prio-dot" style="background:${p.color}"></span>${p.label}
-          </button>
+          <button class="prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>
           <label class="date-field">Start
             <input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}">
           </label>
@@ -347,7 +375,7 @@
           <span class="pct">${pct}%</span>
         </div>` : ''}
         ${timeRow(q)}
-        <ul class="tree">${q.steps.map(n => renderNode(n, q.id)).join('')}</ul>
+        <ul class="tree">${sortedSteps(q.steps).map(n => renderNode(n, q.id)).join('')}</ul>
         <form class="add-row" data-action="add-step" data-quest="${q.id}">
           <input type="text" placeholder="Neuer Schritt …" autocomplete="off" enterkeyhint="done">
           <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
@@ -370,9 +398,12 @@
         ${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
 
     const quests = state.quests.filter(q => q.category === questCat);
-    const withDl = quests.filter(q => q.deadline)
-      .sort((x, y) => x.deadline < y.deadline ? -1 : x.deadline > y.deadline ? 1 : 0);
-    const withoutDl = quests.filter(q => !q.deadline);
+    const withDl = quests.filter(q => questEffDeadline(q))
+      .sort((x, y) => {
+        const xe = questEffDeadline(x), ye = questEffDeadline(y);
+        return xe < ye ? -1 : xe > ye ? 1 : 0;
+      });
+    const withoutDl = quests.filter(q => !questEffDeadline(q));
 
     return `<div class="board-title">Questlog</div>
       <div class="seg">${tabs}</div>
@@ -391,7 +422,7 @@
       return `<section class="block${l.open ? ' open' : ''}">
         <header class="block-head list-head" data-action="toggle-list" data-id="${l.id}">
           <span class="chev">${ICONS.chevron}</span>
-          <h2>${esc(l.name)}</h2>
+          <h2 class="editable" data-edit="list-name" data-id="${l.id}">${esc(l.name)}</h2>
           <span class="count">${doneCount}/${l.items.length}</span>
           <button class="del" data-action="del-list" data-id="${l.id}" aria-label="Liste löschen">${ICONS.x}</button>
         </header>
@@ -399,7 +430,7 @@
           ${l.items.length
             ? `<ul class="items">${l.items.map(i => `<li class="row${i.done ? ' done' : ''}">
                 <button class="checkbox" data-action="toggle-item" data-list="${l.id}" data-id="${i.id}" aria-label="Abhaken">${ICONS.check}</button>
-                <span class="row-text">${esc(i.text)}</span>
+                <span class="row-text editable" data-edit="item-text" data-list="${l.id}" data-id="${i.id}">${esc(i.text)}</span>
                 <button class="del" data-action="del-item" data-list="${l.id}" data-id="${i.id}" aria-label="Löschen">${ICONS.x}</button>
               </li>`).join('')}</ul>`
             : '<div class="empty">— leer —</div>'}
@@ -418,7 +449,7 @@
   }
 
   function render() {
-    renderHeaderDate();
+    if (editing) return; // während einer Umbenennung nicht neu zeichnen
     for (const btn of tabbar.querySelectorAll('.tab')) {
       btn.classList.toggle('active', btn.dataset.tab === activeTab);
     }
@@ -431,11 +462,63 @@
     }
   }
 
+  /* ---------- Inline-Umbenennen (Doppelklick) ---------- */
+
+  let editing = null;
+
+  function startEdit(el) {
+    if (editing) return;
+    editing = el;
+    el.setAttribute('contenteditable', 'plaintext-only');
+    el.classList.add('editing');
+    el.focus();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  function applyEdit(ds, val) {
+    switch (ds.edit) {
+      case 'quest-title': { const q = state.quests.find(q => q.id === ds.id); if (q) q.title = val; break; }
+      case 'node-text': { const q = state.quests.find(q => q.id === ds.quest); const n = q && findNode(q.steps, ds.id); if (n) n.text = val; break; }
+      case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
+      case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
+    }
+  }
+
+  function commitEdit(cancel) {
+    if (!editing) return;
+    const el = editing;
+    editing = null;
+    el.removeAttribute('contenteditable');
+    el.classList.remove('editing');
+    const val = el.textContent.trim();
+    if (!cancel && val) applyEdit({ ...el.dataset }, val);
+    save();
+    render();
+  }
+
+  view.addEventListener('dblclick', e => {
+    const el = e.target.closest('.editable');
+    if (el) startEdit(el);
+  });
+  view.addEventListener('keydown', e => {
+    if (!editing) return;
+    if (e.key === 'Enter') { e.preventDefault(); commitEdit(false); }
+    else if (e.key === 'Escape') { e.preventDefault(); commitEdit(true); }
+  });
+  view.addEventListener('focusout', e => {
+    if (editing && e.target === editing) commitEdit(false);
+  });
+
   /* ---------- Aktionen ---------- */
 
   view.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (!el || !view.contains(el) || el.tagName === 'FORM') return;
+    if (el.closest('.editable')) return; // Klick gehört zur Umbenennung
     const { action, id, list: listId, quest: questId } = el.dataset;
 
     switch (action) {
@@ -450,7 +533,7 @@
       }
       case 'toggle-quest': {
         const q = state.quests.find(q => q.id === id);
-        if (!q || q.steps.length) return; // mit Schritten: rein abgeleitet
+        if (!q || q.steps.length) return;
         q.done = !q.done;
         q.doneAt = q.done ? nowISO() : null;
         if (q.done) touchStreak(q.streak);
@@ -467,6 +550,14 @@
         if (!q) return;
         const i = PRIOS.findIndex(p => p.key === q.priority);
         q.priority = PRIOS[(i + 1) % PRIOS.length].key;
+        break;
+      }
+      case 'cycle-prio-node': {
+        const q = state.quests.find(q => q.id === el.dataset.quest);
+        const n = q && findNode(q.steps, el.dataset.node);
+        if (!n) return;
+        const i = PRIOS.findIndex(p => p.key === n.priority);
+        n.priority = PRIOS[(i + 1) % PRIOS.length].key;
         break;
       }
 
@@ -524,15 +615,21 @@
     render();
   });
 
-  /* Datumsfelder (Start/Ende) — leeres Feld löscht den Wert. */
+  /* Datumsfelder — leeres Feld löscht den Wert. */
   view.addEventListener('change', e => {
     const input = e.target.closest('input[type="date"][data-field]');
     if (!input) return;
-    const q = state.quests.find(q => q.id === input.dataset.id);
-    if (!q) return;
+    const f = input.dataset.field;
     const v = isDateStr(input.value) ? input.value : null;
-    if (input.dataset.field === 'start') q.start = v;
-    else q.deadline = v;
+    if (f === 'start' || f === 'deadline') {
+      const q = state.quests.find(q => q.id === input.dataset.id);
+      if (!q) return;
+      if (f === 'start') q.start = v; else q.deadline = v;
+    } else if (f === 'node-deadline') {
+      const q = state.quests.find(q => q.id === input.dataset.quest);
+      const n = q && findNode(q.steps, input.dataset.node);
+      if (n) n.deadline = v;
+    }
     save();
     render();
   });
@@ -541,7 +638,7 @@
     const form = e.target.closest('form[data-action]');
     if (!form) return;
     e.preventDefault();
-    const input = form.querySelector('input');
+    const input = form.querySelector('input[type="text"], input:not([type])');
     const text = input.value.trim();
     if (!text) return;
 
@@ -569,7 +666,7 @@
         const q = state.quests.find(q => q.id === form.dataset.quest);
         const parent = q && findNode(q.steps, form.dataset.parent);
         if (!parent) return;
-        parent.done = false; // ehemaliges Blatt wird Ast
+        parent.done = false;
         parent.open = true;
         parent.steps.push(newNode(text));
         syncQuestDone(q);
@@ -603,8 +700,7 @@
     render();
   });
 
-  /* Beim Zurückkehren in die App: Tageswechsel erkennen (Restzeiten/Zeitbalken
-     aktualisieren, abgelaufene Streaks intern nullen). */
+  /* Beim Zurückkehren: Tageswechsel erkennen (Restzeiten/Zeitbalken aktualisieren). */
   function onReturn() {
     if (document.visibilityState !== 'visible') return;
     const changed = auditAllStreaks();
@@ -620,7 +716,7 @@
   /* ---------- Start ---------- */
 
   auditAllStreaks();
-  save(); // persistiert die (ggf. migrierte) Struktur unter dem v3-Key
+  save();
   render();
 
   if ('serviceWorker' in navigator) {

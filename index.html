@@ -14,21 +14,12 @@
 </head>
 <body>
 
-  <header class="app-header">
-    <div class="app-title">Quest-Log</div>
-    <div class="app-date" id="headerDate"></div>
-  </header>
+  <nav class="topnav" id="tabbar">
+    <button class="tab active" data-tab="quests">Quests</button>
+    <button class="tab" data-tab="lists">Listen</button>
+  </nav>
 
   <main class="view" id="view"></main>
-
-  <nav class="tabbar" id="tabbar">
-    <button class="tab active" data-tab="quests">
-      <span class="tab-num">01</span><span>Quests</span>
-    </button>
-    <button class="tab" data-tab="lists">
-      <span class="tab-num">02</span><span>Listen</span>
-    </button>
-  </nav>
 
   <script src="./icons.js"></script>
   <script src="./app.js"></script>
