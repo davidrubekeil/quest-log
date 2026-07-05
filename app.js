@@ -23,6 +23,13 @@
   ];
   const prioOf = k => PRIOS.find(p => p.key === k) || PRIOS[1];
 
+  const SECTIONS = [
+    { key: 'studium',   label: 'Studium und Arbeit' },
+    { key: 'kreatives', label: 'Kreatives und Sport' },
+    { key: 'buero',     label: 'Büro' },
+  ];
+  const sectionOf = k => SECTIONS.find(s => s.key === k) || SECTIONS[0];
+
   /* ---------- Helfer ---------- */
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -222,6 +229,7 @@
           id: q.id || uid(),
           title: String(q.title ?? ''),
           category: q.category === 'side' ? 'side' : 'main',
+          section: SECTIONS.some(s => s.key === q.section) ? q.section : 'studium',
           done: !!q.done,
           doneAt: q.doneAt || null,
           priority: PRIOS.some(p => p.key === q.priority) ? q.priority : 'mittel',
@@ -302,7 +310,7 @@
       </div>
       ${node.open ? `<ul class="subtree">
         <li class="meta-row">
-          <button class="prio-btn" data-action="cycle-prio-node" data-quest="${questId}" data-node="${node.id}">${dotHtml(p)}${p.label}</button>
+          <button class="chip prio-btn" data-action="cycle-prio-node" data-quest="${questId}" data-node="${node.id}">${dotHtml(p)}${p.label}</button>
           <label class="date-field">Termin
             <input type="date" data-field="node-deadline" data-quest="${questId}" data-node="${node.id}" value="${node.deadline || ''}">
           </label>
@@ -361,7 +369,8 @@
       </header>
       ${q.open ? `
         <div class="meta-row">
-          <button class="prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>
+          <button class="chip sect-btn" data-action="cycle-section" data-id="${q.id}">${esc(sectionOf(q.section).label)}</button>
+          <button class="chip prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>
           <label class="date-field">Start
             <input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}">
           </label>
@@ -388,6 +397,34 @@
     return `<div class="group-label">${label}</div>${quests.map(renderQuest).join('')}`;
   }
 
+  const byQuestDeadline = (x, y) => {
+    const xe = questEffDeadline(x), ye = questEffDeadline(y);
+    return xe < ye ? -1 : xe > ye ? 1 : 0;
+  };
+
+  function renderSection(sec, quests) {
+    const withDl = quests.filter(q => questEffDeadline(q)).sort(byQuestDeadline);
+    const withoutDl = quests.filter(q => !questEffDeadline(q));
+
+    let body;
+    if (withDl.length && withoutDl.length) {
+      // Nur wenn ein Bereich beides enthält, die Mit/Ohne-Deadline-Trennung zeigen.
+      body = renderGroup('Mit Deadline', withDl) + renderGroup('Ohne Deadline', withoutDl);
+    } else {
+      const all = withDl.concat(withoutDl);
+      body = all.length ? all.map(renderQuest).join('') : '<div class="empty">— keine Quests —</div>';
+    }
+
+    return `<section class="board-section">
+      <div class="section-title">${esc(sec.label)}</div>
+      ${body}
+      <form class="add-row add-block" data-action="add-quest" data-section="${sec.key}">
+        <input type="text" placeholder="Neue Quest …" autocomplete="off" enterkeyhint="done">
+        <button type="submit" aria-label="Quest anlegen">${ICONS.plus}</button>
+      </form>
+    </section>`;
+  }
+
   function renderQuests() {
     const counts = {
       main: state.quests.filter(q => q.category === 'main').length,
@@ -397,23 +434,14 @@
       `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">
         ${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
 
-    const quests = state.quests.filter(q => q.category === questCat);
-    const withDl = quests.filter(q => questEffDeadline(q))
-      .sort((x, y) => {
-        const xe = questEffDeadline(x), ye = questEffDeadline(y);
-        return xe < ye ? -1 : xe > ye ? 1 : 0;
-      });
-    const withoutDl = quests.filter(q => !questEffDeadline(q));
+    const inTab = state.quests.filter(q => q.category === questCat);
+    const sections = SECTIONS
+      .map(sec => renderSection(sec, inTab.filter(q => q.section === sec.key)))
+      .join('');
 
     return `<div class="board-title">Questlog</div>
       <div class="seg">${tabs}</div>
-      ${quests.length
-        ? renderGroup('Mit Deadline', withDl) + renderGroup('Ohne Deadline', withoutDl)
-        : '<div class="empty">— keine Quests in dieser Kategorie —</div>'}
-      <form class="add-row add-block" data-action="add-quest">
-        <input type="text" placeholder="Neue ${questCat === 'main' ? 'Main' : 'Side'}-Quest …" autocomplete="off" enterkeyhint="done">
-        <button type="submit" aria-label="Quest anlegen">${ICONS.plus}</button>
-      </form>`;
+      ${sections}`;
   }
 
   function renderLists() {
@@ -552,6 +580,13 @@
         q.priority = PRIOS[(i + 1) % PRIOS.length].key;
         break;
       }
+      case 'cycle-section': {
+        const q = state.quests.find(q => q.id === id);
+        if (!q) return;
+        const i = SECTIONS.findIndex(s => s.key === q.section);
+        q.section = SECTIONS[(i + 1) % SECTIONS.length].key;
+        break;
+      }
       case 'cycle-prio-node': {
         const q = state.quests.find(q => q.id === el.dataset.quest);
         const n = q && findNode(q.steps, el.dataset.node);
@@ -643,15 +678,17 @@
     if (!text) return;
 
     switch (form.dataset.action) {
-      case 'add-quest':
+      case 'add-quest': {
+        const section = SECTIONS.some(s => s.key === form.dataset.section) ? form.dataset.section : 'studium';
         state.quests.push({
-          id: uid(), title: text, category: questCat,
+          id: uid(), title: text, category: questCat, section,
           done: false, doneAt: null,
           priority: 'mittel', createdAt: todayStr(), start: null, deadline: null,
           steps: [], streak: freshStreak(), open: true,
         });
-        refocusSel = 'form[data-action="add-quest"] input';
+        refocusSel = `form[data-action="add-quest"][data-section="${section}"] input`;
         break;
+      }
 
       case 'add-step': {
         const q = state.quests.find(q => q.id === form.dataset.quest);

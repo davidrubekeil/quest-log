@@ -137,14 +137,29 @@ input { font: inherit; color: inherit; }
 
 .seg-count { font-size: 10px; opacity: 0.55; margin-left: 6px; }
 
-/* ---------- Gruppen-Label ---------- */
+/* ---------- Bereichs-Abschnitte (Studium / Kreatives / Büro) ---------- */
+
+.board-section { margin-bottom: 34px; }
+
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ---------- Gruppen-Label (Mit/Ohne Deadline innerhalb eines Bereichs) ---------- */
 
 .group-label {
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
-  margin: 26px 0 12px;
+  margin: 18px 0 10px;
 }
 
 /* ---------- Blöcke (Quests, Listen) — entlinkt: nur linker Akzent ---------- */
@@ -213,19 +228,20 @@ input { font: inherit; color: inherit; }
   list-style: none;
 }
 
-.prio-btn {
+.chip {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 0;
+  padding: 4px 9px;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
-  transition: color 0.12s;
+  border: 1px solid var(--rule);
+  transition: color 0.12s, border-color 0.12s;
 }
 
-.prio-btn:hover { color: var(--ink); }
+.chip:hover { color: var(--ink); border-color: var(--muted); }
 
 .date-field {
   display: flex;
