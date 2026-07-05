@@ -854,8 +854,12 @@ input { font: inherit; color: inherit; }
 
 /* ---------- Nächster Schritt ---------- */
 
-.next-mark { flex: none; color: var(--blue); font-weight: 700; }
-.node.step.next > .node-row { background: rgba(61, 90, 115, 0.07); }
+.next-btn { flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; color: var(--blue); opacity: 0; transition: opacity 0.12s; }
+.node-row:hover .next-btn { opacity: 0.45; }
+.next-btn:hover { opacity: 0.9; }
+.next-btn.on { opacity: 1; font-weight: 700; }
+.node.next > .node-row { background: rgba(61, 90, 115, 0.08); }
+.node.has-next > .node-row .chev { color: var(--blue); }
 .next-link { text-align: left; color: var(--blue); font-size: 13px; }
 .next-link:hover { text-decoration: underline; }
 .ctx-empty { font-size: 12px; color: var(--muted); }

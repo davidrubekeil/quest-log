@@ -96,7 +96,7 @@
 
   /* ---------- Schritt ---------- */
 
-  const newStep = text => ({ id: uid(), text, type: 'frist', deadline: null, notes: '', done: false, doneAt: null, subs: [] });
+  const newStep = text => ({ id: uid(), text, type: 'frist', deadline: null, notes: '', done: false, doneAt: null, subs: [], open: false });
   const stepHasSubs = s => s.subs.length > 0;
   const stepDone = s => stepHasSubs(s) ? s.subs.every(subDone) : !!s.done;
   const stepLeaves = s => stepHasSubs(s)
@@ -119,6 +119,17 @@
   const byDoneAt = (a, b) => (b.doneAt || '').localeCompare(a.doneAt || '');
 
   const findStep = (q, id) => q.steps.find(s => s.id === id);
+  const findNodeAny = (q, id) => { for (const s of q.steps) { if (s.id === id) return s; const sub = findSubRec(s.subs, id); if (sub) return sub; } return null; };
+  /* nächster Schritt (kann Schritt oder Unterschritt sein): Anzeige-Label + Eltern-Schritt. */
+  function nextInfo(q) {
+    if (!q.nextStepId) return null;
+    for (const s of q.steps) {
+      if (s.id === q.nextStepId) return { label: s.text, stepId: s.id };
+      const sub = findSubRec(s.subs, q.nextStepId);
+      if (sub) return { label: `${s.text} › ${sub.text}`, stepId: s.id };
+    }
+    return null;
+  }
 
   function syncQuestDone(q) {
     const { done, total } = questLeaves(q);
@@ -164,6 +175,7 @@
       notes: typeof raw.notes === 'string' ? raw.notes : '',
       done: !!raw.done, doneAt: raw.doneAt || null,
       subs: kidsOf(raw).map(normalizeSub).filter(Boolean),
+      open: !!raw.open,
     };
   }
   function normalizeMilestone(raw) {
@@ -207,7 +219,7 @@
         steps: (Array.isArray(q.steps) ? q.steps : []).map(normalizeStep).filter(Boolean),
         streak: sanitizeStreak(q.streak),
       }));
-      for (const q of s.quests) { syncQuestDone(q); if (q.nextStepId && !findStep(q, q.nextStepId)) q.nextStepId = null; }
+      for (const q of s.quests) { syncQuestDone(q); if (q.nextStepId && !findNodeAny(q, q.nextStepId)) q.nextStepId = null; }
     }
 
     if (Array.isArray(raw.agenda)) s.agenda = raw.agenda.map(normalizeAgenda).filter(Boolean);
@@ -343,22 +355,29 @@
 
   /* --- Schritte (Spalte 2) --- */
 
-  function renderSub(sub, questId, stepId) {
+  function nextBtn(questId, id, isNext) {
+    return `<button class="next-btn${isNext ? ' on' : ''}" data-action="toggle-next" data-quest="${questId}" data-id="${id}" aria-label="Als nächsten Schritt" title="Als nächsten Schritt">→</button>`;
+  }
+
+  function renderSub(sub, questId, stepId, nextId) {
     const hasKids = sub.subs.length > 0;
     const done = subDone(sub);
+    const isNext = sub.id === nextId;
+    const hasNextInside = nextId && !isNext && !!findSubRec(sub.subs, nextId);
     const { done: sd, total: st } = subLeaves(sub);
     const control = hasKids
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
-    return `<li class="node sub${done ? ' done' : ''}${sub.open ? ' open' : ''}">
+    return `<li class="node sub${done ? ' done' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}">
       <div class="node-row">
         <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         ${control}
         <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
+        ${nextBtn(questId, sub.id, isNext)}
         <button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
       ${sub.open ? `<ul class="subtree">
-        ${sub.subs.map(k => renderSub(k, questId, stepId)).join('')}
+        ${sub.subs.map(k => renderSub(k, questId, stepId, nextId)).join('')}
         <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${stepId}" data-parent="${sub.id}"`)}</li>
       </ul>` : ''}
     </li>`;
@@ -368,6 +387,8 @@
     const hasSubs = stepHasSubs(s);
     const done = stepDone(s);
     const sel = s.id === activeStepId;
+    const isNext = s.id === nextId;
+    const hasNextInside = nextId && !isNext && !!findSubRec(s.subs, nextId);
     const { done: sd, total: st } = stepLeaves(s);
     const eff = stepEffDeadline(s);
     const du = eff ? daysUntil(eff) : null;
@@ -375,16 +396,17 @@
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const tail = s.type === 'laufend' ? '<span class="flow-badge">laufend</span>' : (du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
-    return `<li class="node step${done ? ' done' : ''}${sel ? ' sel' : ''}${s.id === nextId ? ' next' : ''}">
+    return `<li class="node step${done ? ' done' : ''}${sel ? ' sel' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${s.open ? ' open' : ''}">
       <div class="node-row" data-action="select-step" data-quest="${questId}" data-id="${s.id}">
+        <button class="chev" data-action="toggle-step-open" data-quest="${questId}" data-id="${s.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         ${control}
-        ${s.id === nextId ? '<span class="next-mark">→</span>' : ''}
         <span class="row-text${sel ? ' editable' : ''}"${sel ? ` data-edit="step-text" data-quest="${questId}" data-id="${s.id}"` : ''}>${esc(s.text)}</span>
         ${tail}
+        ${nextBtn(questId, s.id, isNext)}
         <button class="del" data-action="del-step" data-quest="${questId}" data-id="${s.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
-      ${sel ? `<ul class="subtree">
-        ${s.subs.map(sub => renderSub(sub, questId, s.id)).join('')}
+      ${s.open ? `<ul class="subtree">
+        ${s.subs.map(sub => renderSub(sub, questId, s.id, nextId)).join('')}
         <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${s.id}"`)}</li>
       </ul>` : ''}
     </li>`;
@@ -435,13 +457,13 @@
       </div>`;
     }
     const isFocus = q.id === state.focusQuestId;
-    const next = q.nextStepId ? findStep(q, q.nextStepId) : null;
+    const ni = nextInfo(q);
     return `<div class="col-notes">
       <div class="col-head">Kontext · Quest</div>
       <button class="ctx-toggle${isFocus ? ' on' : ''}" data-action="toggle-focus" data-id="${q.id}">${isFocus ? '✓ Fokus aktiv' : 'Als Fokus setzen'}</button>
       <div class="ctx-block">
         <div class="ctx-label">Nächster Schritt</div>
-        ${next ? `<button class="next-link" data-action="select-step" data-quest="${q.id}" data-id="${next.id}">→ ${esc(next.text)}</button>` : '<span class="ctx-empty">— in der Schritte-Spalte wählen —</span>'}
+        ${ni ? `<button class="next-link" data-action="select-step" data-quest="${q.id}" data-id="${ni.stepId}">→ ${esc(ni.label)}</button>` : '<span class="ctx-empty">— in der Schritte-Spalte mit → wählen —</span>'}
       </div>
       <div class="ctx-block">
         <div class="ctx-label">Milestones</div>
@@ -639,8 +661,9 @@
       case 'toggle-focus': state.focusQuestId = state.focusQuestId === id ? null : id; break;
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
-      case 'select-step': if (id !== activeStepId) activeStepId = id; else return; break;
+      case 'select-step': { if (id === activeStepId) return; activeStepId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
       case 'deselect-step': activeStepId = null; break;
+      case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }
       case 'toggle-next': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.nextStepId = q.nextStepId === id ? null : id; break; }
 
       case 'toggle-step': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (!s || stepHasSubs(s)) return; s.done = !s.done; s.doneAt = s.done ? nowISO() : null; if (s.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
