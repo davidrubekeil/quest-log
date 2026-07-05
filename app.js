@@ -15,8 +15,10 @@
   const QUEST_TABS = [
     { key: 'main', label: 'Main' },
     { key: 'side', label: 'Side' },
+    { key: 'events', label: 'Events' },
     { key: 'erledigt', label: 'Erledigt' },
   ];
+  const EVENT_COLOR = '#7A6E8A';
 
   const PRIOS = [
     { key: 'hoch',    label: 'Hoch',    color: 'var(--red)' },
@@ -256,6 +258,22 @@
   }
   function entriesByDate() { const map = {}; for (const e of collectEntries()) (map[e.date] || (map[e.date] = [])).push(e); return map; }
 
+  const eventEnd = e => e.end || e.start;
+  const eventSpanLabel = e => (e.end && e.end !== e.start) ? `${fmtShort(e.start)}–${fmtShort(e.end)}` : fmtShort(e.start);
+  const eventsCovering = ds => state.events.filter(e => e.start <= ds && ds <= eventEnd(e));
+  /* Gantt-Lane-Packung: überlappende Events bekommen verschiedene Zeilen, damit ein
+     mehrtägiger Balken über die Tage in derselben Zeile durchläuft. */
+  function assignLanes(events) {
+    const sorted = events.slice().sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+    const laneEnd = [], laneOf = {};
+    for (const e of sorted) {
+      let placed = false;
+      for (let i = 0; i < laneEnd.length; i++) { if (laneEnd[i] < e.start) { laneEnd[i] = eventEnd(e); laneOf[e.id] = i; placed = true; break; } }
+      if (!placed) { laneOf[e.id] = laneEnd.length; laneEnd.push(eventEnd(e)); }
+    }
+    return { laneOf, laneCount: laneEnd.length };
+  }
+
   /* ---------- Rendering ---------- */
 
   const view = document.getElementById('view');
@@ -266,6 +284,7 @@
   let questCat = 'main';
   let activeQuestId = null;
   let activeStepId = null;
+  let activeEventId = null;
   let stepTab = 'aktuell';
   let calView = 'monat';
   let calCursor = todayStr();
@@ -506,15 +525,52 @@
     return `<div class="archive">${html || '<div class="empty">— noch nichts erledigt —</div>'}</div>`;
   }
 
+  /* --- Events (zweispaltig: Liste + Kontext) --- */
+
+  function renderEventRow(e, active) {
+    const isActive = active && e.id === active.id;
+    return `<div class="evrow${isActive ? ' active' : ''}" data-action="open-event" data-id="${e.id}">
+      <span class="ev-dot" style="background:${EVENT_COLOR}"></span>
+      <span class="ev-date">${eventSpanLabel(e)}</span>
+      <span class="ev-name${isActive ? ' editable' : ''}"${isActive ? ` data-edit="ev-name" data-id="${e.id}"` : ''}>${esc(e.name)}</span>
+      <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Event löschen">${ICONS.x}</button>
+    </div>`;
+  }
+
+  function renderEventContext(e) {
+    return `<div class="col-notes">
+      <div class="col-head">Event</div>
+      <div class="ctx-title">${esc(e.name)}</div>
+      <div class="meta-row">
+        <label class="date-field">Von<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
+        <label class="date-field">Bis<input type="date" data-field="ev-end" data-id="${e.id}" value="${e.end || ''}"></label>
+      </div>
+      <div class="ctx-label">Notizen</div>
+      <textarea class="notes" data-ev-notes data-id="${e.id}" placeholder="Notizen zum Event …">${esc(e.notes)}</textarea>
+    </div>`;
+  }
+
+  function renderEvents() {
+    const events = state.events.slice().sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+    const active = activeEventId ? events.find(e => e.id === activeEventId) : null;
+    const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : '<div class="empty">— keine Events —</div>';
+    return `<div class="ev-board${active ? ' detail has-active' : ''}">
+      <div class="ev-list">${active ? '<button class="back" data-action="close-event">← Übersicht</button>' : ''}${list}${addMini('add-event', 'Neues Event')}</div>
+      ${active ? renderEventContext(active) : ''}
+    </div>`;
+  }
+
   function renderQuests() {
     const counts = {
       main: state.quests.filter(q => q.category === 'main' && !q.done).length,
       side: state.quests.filter(q => q.category === 'side' && !q.done).length,
+      events: state.events.length,
       erledigt: state.quests.filter(q => q.done).length,
     };
     const tabs = QUEST_TABS.map(c => `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
     const head = `<div class="board-title">Questlog</div><div class="seg">${tabs}</div>`;
 
+    if (questCat === 'events') return head + renderEvents();
     if (questCat === 'erledigt') return head + renderArchive();
 
     const inTab = state.quests.filter(q => q.category === questCat && !q.done);
@@ -534,15 +590,30 @@
     const c = parseDate(calCursor);
     const first = new Date(c.getFullYear(), c.getMonth(), 1);
     const gridStart = addDays(dateStr(first), -wdIndexMon(first));
+    const gridEnd = addDays(gridStart, 41);
     const weekdays = WD_SHORT.map(w => `<div class="cal-weekday">${w}</div>`).join('');
+
+    const monthEvents = state.events.filter(e => eventEnd(e) >= gridStart && e.start <= gridEnd);
+    const { laneOf, laneCount } = assignLanes(monthEvents);
+    const lanesShown = Math.min(3, laneCount);
+
     let cells = '';
     for (let i = 0; i < 42; i++) {
       const ds = addDays(gridStart, i);
       const d = parseDate(ds);
+      const cover = eventsCovering(ds);
+      let bars = '';
+      for (let lane = 0; lane < lanesShown; lane++) {
+        const e = cover.find(x => laneOf[x.id] === lane);
+        if (e) {
+          const showName = ds === e.start || wdIndexMon(d) === 0;
+          bars += `<div class="cal-bar${ds === e.start ? ' bar-start' : ''}${ds === eventEnd(e) ? ' bar-end' : ''}" data-action="open-event-cal" data-id="${e.id}" title="${esc(e.name)}">${showName ? esc(e.name) : ''}</div>`;
+        } else bars += '<div class="cal-bar empty"></div>';
+      }
       const items = byDate[ds] || [];
-      const chips = items.slice(0, 3).map(e => `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
-      const more = items.length > 3 ? `<div class="cal-more">+${items.length - 3} mehr</div>` : '';
-      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span>${chips}${more}</div>`;
+      const chips = items.slice(0, 2).map(e => `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
+      const more = items.length > 2 ? `<div class="cal-more">+${items.length - 2} mehr</div>` : '';
+      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span>${bars}${chips}${more}</div>`;
     }
     return `<div class="cal-grid">${weekdays}${cells}</div>`;
   }
@@ -560,8 +631,10 @@
     const steps = items.filter(e => e.kind === 'step');
     const tasks = items.filter(e => e.kind === 'agenda');
     const d = parseDate(calCursor);
+    const evCover = eventsCovering(calCursor);
     const group = (label, arr) => arr.length ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
-    const body = (markers.length || steps.length || tasks.length) ? group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
+    const evGroup = evCover.length ? `<div class="day-group"><div class="day-group-label">Events</div><ul class="items">${evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`).join('')}</ul></div>` : '';
+    const body = (evCover.length || markers.length || steps.length || tasks.length) ? evGroup + group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
     return `<div class="day-view"><div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>${body}
       <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}"><input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form></div>`;
   }
@@ -612,6 +685,7 @@
       case 'step-text': { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.id); if (s) s.text = val; break; }
       case 'sub-text': { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.id); if (sub) sub.text = val; break; }
       case 'ms-text': { const q = state.quests.find(q => q.id === ds.quest); const m = q && q.milestones.find(m => m.id === ds.id); if (m) m.text = val; break; }
+      case 'ev-name': { const ev = state.events.find(x => x.id === ds.id); if (ev) ev.name = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
@@ -628,15 +702,16 @@
   view.addEventListener('keydown', e => { if (!editing) return; if (e.key === 'Enter') { e.preventDefault(); commitEdit(false); } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(true); } });
   view.addEventListener('focusout', e => { if (editing && e.target === editing) commitEdit(false); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !editing) { if (activeStepId) { activeStepId = null; render(); } else if (activeQuestId) { activeQuestId = null; render(); } }
+    if (e.key === 'Escape' && !editing) { if (activeStepId) { activeStepId = null; render(); } else if (activeQuestId) { activeQuestId = null; render(); } else if (activeEventId) { activeEventId = null; render(); } }
   });
 
   /* ---------- Notizen (ohne Re-Render) ---------- */
 
   view.addEventListener('input', e => {
-    const ta = e.target.closest('textarea[data-notes], textarea[data-step-notes]');
+    const ta = e.target.closest('textarea[data-notes], textarea[data-step-notes], textarea[data-ev-notes]');
     if (!ta) return;
-    if (ta.hasAttribute('data-step-notes')) { const q = state.quests.find(q => q.id === ta.dataset.quest); const s = q && findStep(q, ta.dataset.id); if (s) { s.notes = ta.value; save(); } }
+    if (ta.hasAttribute('data-ev-notes')) { const ev = state.events.find(x => x.id === ta.dataset.id); if (ev) { ev.notes = ta.value; save(); } }
+    else if (ta.hasAttribute('data-step-notes')) { const q = state.quests.find(q => q.id === ta.dataset.quest); const s = q && findStep(q, ta.dataset.id); if (s) { s.notes = ta.value; save(); } }
     else { const q = state.quests.find(q => q.id === ta.dataset.id); if (q) { q.notes = ta.value; save(); } }
   });
 
@@ -649,7 +724,12 @@
     const { action, id, list: listId, quest: questId, step: stepId } = el.dataset;
 
     switch (action) {
-      case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; break;
+      case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
+
+      case 'open-event': if (id !== activeEventId) activeEventId = id; else return; break;
+      case 'close-event': activeEventId = null; break;
+      case 'del-event': { const ev = state.events.find(x => x.id === id); if (!ev || !confirm(`Event „${ev.name}" löschen?`)) return; state.events = state.events.filter(x => x.id !== id); if (id === activeEventId) activeEventId = null; break; }
+      case 'open-event-cal': activeTab = 'quests'; questCat = 'events'; activeEventId = id; activeQuestId = null; activeStepId = null; break;
 
       case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; stepTab = 'aktuell'; } else return; break;
       case 'close-quest': activeQuestId = null; activeStepId = null; break;
@@ -708,6 +788,8 @@
     if (f === 'start' || f === 'deadline') { const q = state.quests.find(q => q.id === input.dataset.id); if (!q) return; if (f === 'start') q.start = v; else q.deadline = v; }
     else if (f === 'step-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const s = q && findStep(q, input.dataset.id); if (s) s.deadline = v; }
     else if (f === 'ms-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const m = q && q.milestones.find(m => m.id === input.dataset.id); if (m) m.deadline = v; }
+    else if (f === 'ev-start') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev && v) { ev.start = v; if (ev.end && ev.end < ev.start) ev.end = null; } }
+    else if (f === 'ev-end') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev) ev.end = (v && v >= ev.start) ? v : null; }
     save(); render();
   });
 
@@ -743,6 +825,7 @@
       }
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
       case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); state.agenda.push({ id: uid(), text, date, done: false, doneAt: null }); refocusSel = `form[data-action="add-agenda"] input`; break; }
+      case 'add-event': { const ev = { id: uid(), name: text, start: todayStr(), end: null, notes: '' }; state.events.push(ev); activeEventId = ev.id; break; }
       case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
       case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
       default: return;
@@ -750,7 +833,7 @@
     save(); render();
   });
 
-  tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; render(); });
+  tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; activeEventId = null; render(); });
 
   function onReturn() { if (document.visibilityState !== 'visible') return; const ch = auditAllStreaks(); if (ch || dayStamp !== todayStr()) { dayStamp = todayStr(); if (ch) save(); render(); } }
   document.addEventListener('visibilitychange', onReturn);

@@ -899,3 +899,42 @@ input { font: inherit; color: inherit; }
 .arch-steps li { padding: 2px 0; }
 .arch-steps ul { list-style: none; margin-left: 14px; }
 .arch-sub.done { text-decoration: line-through; text-decoration-color: var(--rule); }
+
+/* ---------- Events ---------- */
+
+.ev-board { max-width: 760px; margin: 0 auto; }
+.ev-board.detail { max-width: none; margin: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 0; align-items: start; }
+.ev-board.detail .ev-list { padding-right: 28px; border-right: 1px solid var(--rule); }
+.ev-board.detail .col-notes { padding-left: 28px; }
+
+.evrow { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--hair); cursor: pointer; transition: background 0.12s, opacity 0.12s; }
+.evrow:hover { background: var(--hair); }
+.evrow.active { background: var(--hair); cursor: default; }
+.ev-dot { flex: none; width: 9px; height: 9px; border: 1px solid var(--ink); }
+.ev-date { flex: none; font-size: 11px; color: var(--muted); min-width: 74px; }
+.ev-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.ev-board.has-active .evrow:not(.active) { opacity: 0.4; }
+
+/* ---------- Kalender: mehrtägige Event-Balken ---------- */
+
+.cal-bar {
+  height: 15px;
+  margin: 0 -7px 1px;
+  padding: 0 6px;
+  font-size: 9px;
+  line-height: 15px;
+  color: var(--paper);
+  background: #7A6E8A;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cal-bar.empty { background: transparent; pointer-events: none; }
+.cal-bar.bar-start { margin-left: 0; }
+.cal-bar.bar-end { margin-right: 0; }
+
+@media (max-width: 940px) {
+  .ev-board.detail { grid-template-columns: 1fr; gap: 24px; }
+  .ev-board.detail .ev-list { padding-right: 0; border-right: none; }
+  .ev-board.detail .col-notes { padding-left: 0; }
+}
