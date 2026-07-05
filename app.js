@@ -62,6 +62,13 @@
     n === 0 ? 'heute' :
     n === 1 ? 'morgen' : `in ${n} Tagen`;
 
+  const addDays = (ds, n) => { const d = parseDate(ds); d.setDate(d.getDate() + n); return dateStr(d); };
+  const addMonths = (ds, n) => { const d = parseDate(ds); d.setDate(1); d.setMonth(d.getMonth() + n); return dateStr(d); };
+  const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+  const WD_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const WD_FULL = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+  const wdIndexMon = d => (d.getDay() + 6) % 7; // Montag = 0
+
   /* ---------- Streak (intern weitergeführt, ohne Anzeige) ---------- */
 
   const freshStreak = () => ({ currentStreak: 0, longestStreak: 0, lastActiveDate: null });
@@ -186,7 +193,19 @@
 
   /* ---------- State, Migration, Persistenz ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [] });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [] });
+
+  /* Freie Tagesaufgaben (gehören zu keiner Quest, nur im Kalender). */
+  function normalizeAgenda(raw) {
+    if (!raw || typeof raw !== 'object' || !isDateStr(raw.date)) return null;
+    return {
+      id: raw.id || uid(),
+      text: String(raw.text ?? ''),
+      date: raw.date,
+      done: !!raw.done,
+      doneAt: raw.doneAt || null,
+    };
+  }
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -249,6 +268,10 @@
       for (const q of s.quests) syncQuestDone(q);
     }
 
+    if (Array.isArray(raw.agenda)) {
+      s.agenda = raw.agenda.map(normalizeAgenda).filter(Boolean);
+    }
+
     return s;
   }
 
@@ -287,8 +310,45 @@
   let activeTab = 'quests';
   let questCat = 'main';
   let activeQuestId = null; // in der Detailansicht geöffnete Quest
+  let calView = 'monat';    // 'monat' | 'tag'
+  let calCursor = todayStr();
   let dayStamp = todayStr();
   let refocusSel = null;
+
+  /* Alle datierten Einträge quest-übergreifend einsammeln.
+     kind: 'quest' (Frist, Markierung) | 'branch' (Ast mit Termin, Markierung)
+           | 'step' (Blatt mit Termin, abhakbar, zählt zum Fortschritt)
+           | 'agenda' (freie Tagesaufgabe, abhakbar). */
+  function collectEntries() {
+    const out = [];
+    const walk = (nodes, q) => {
+      for (const n of nodes) {
+        if (n.deadline) {
+          const leaf = isLeaf(n);
+          out.push({
+            date: n.deadline, kind: leaf ? 'step' : 'branch',
+            questId: q.id, nodeId: n.id, text: n.text, questTitle: q.title,
+            done: isNodeDone(n), checkable: leaf,
+          });
+        }
+        walk(n.steps, q);
+      }
+    };
+    for (const q of state.quests) {
+      if (q.deadline) out.push({ date: q.deadline, kind: 'quest', questId: q.id, text: q.title, done: q.done, checkable: false });
+      walk(q.steps, q);
+    }
+    for (const a of state.agenda) {
+      out.push({ date: a.date, kind: 'agenda', id: a.id, text: a.text, done: a.done, checkable: true });
+    }
+    return out;
+  }
+
+  function entriesByDate() {
+    const map = {};
+    for (const e of collectEntries()) (map[e.date] || (map[e.date] = [])).push(e);
+    return map;
+  }
 
   const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
   const sectionOptions = sel => SECTIONS.map(s => `<option value="${s.key}"${s.key === sel ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
@@ -326,8 +386,9 @@
         </li>
         ${sortedSteps(node.steps).map(k => renderNode(k, questId)).join('')}
         <li class="add-sub">
-          <form class="add-row thin" data-action="add-sub" data-quest="${questId}" data-parent="${node.id}">
+          <form class="add-row thin dated" data-action="add-sub" data-quest="${questId}" data-parent="${node.id}">
             <input type="text" placeholder="Unterschritt …" autocomplete="off" enterkeyhint="done">
+            <input type="date" class="add-date" aria-label="Termin (optional)">
             <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
           </form>
         </li>
@@ -445,8 +506,9 @@
     return `<div class="col-steps">
       <div class="col-head">Schritte</div>
       <ul class="tree">${sortedSteps(q.steps).map(n => renderNode(n, q.id)).join('')}</ul>
-      <form class="add-row" data-action="add-step" data-quest="${q.id}">
+      <form class="add-row dated" data-action="add-step" data-quest="${q.id}">
         <input type="text" placeholder="Neuer Schritt …" autocomplete="off" enterkeyhint="done">
+        <input type="date" class="add-date" aria-label="Termin (optional)">
         <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
       </form>
     </div>`;
@@ -517,12 +579,108 @@
       </form>`;
   }
 
+  const DOT = { quest: 'var(--red)', branch: 'var(--muted)', step: 'var(--blue)', agenda: 'var(--flow)' };
+
+  function renderMonth(byDate) {
+    const c = parseDate(calCursor);
+    const year = c.getFullYear(), month = c.getMonth();
+    const first = new Date(year, month, 1);
+    const gridStart = addDays(dateStr(first), -wdIndexMon(first));
+
+    const weekdays = WD_SHORT.map(w => `<div class="cal-weekday">${w}</div>`).join('');
+    let cells = '';
+    for (let i = 0; i < 42; i++) {
+      const ds = addDays(gridStart, i);
+      const d = parseDate(ds);
+      const inMonth = d.getMonth() === month;
+      const isToday = ds === todayStr();
+      const items = byDate[ds] || [];
+      const chips = items.slice(0, 3).map(e =>
+        `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
+      const more = items.length > 3 ? `<div class="cal-more">+${items.length - 3} mehr</div>` : '';
+      cells += `<div class="cal-cell${inMonth ? '' : ' other'}${isToday ? ' today' : ''}" data-action="cal-day" data-date="${ds}">
+        <span class="cal-daynum">${d.getDate()}</span>${chips}${more}</div>`;
+    }
+    return `<div class="cal-grid">${weekdays}${cells}</div>`;
+  }
+
+  function calEntryRow(e) {
+    if (e.checkable && e.kind === 'step') {
+      return `<li class="row${e.done ? ' done' : ''}">
+        <button class="checkbox" data-action="toggle-node" data-quest="${e.questId}" data-id="${e.nodeId}" aria-label="Abhaken">${ICONS.check}</button>
+        <span class="row-text">${esc(e.text)}</span>
+        <button class="cal-ctx" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.questTitle)}</button>
+      </li>`;
+    }
+    if (e.kind === 'agenda') {
+      return `<li class="row${e.done ? ' done' : ''}">
+        <button class="checkbox" data-action="toggle-agenda" data-id="${e.id}" aria-label="Abhaken">${ICONS.check}</button>
+        <span class="row-text">${esc(e.text)}</span>
+        <button class="del" data-action="del-agenda" data-id="${e.id}" aria-label="Löschen">${ICONS.x}</button>
+      </li>`;
+    }
+    // Markierung (Quest-Frist oder Ast mit Termin), nicht abhakbar
+    return `<li class="row marker${e.done ? ' done' : ''}">
+      <span class="cdot" style="background:${DOT[e.kind]}"></span>
+      <button class="marker-link" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.text)}${e.kind === 'branch' ? ` · ${esc(e.questTitle)}` : ''}</button>
+      <span class="marker-tag">${e.kind === 'quest' ? 'Quest-Frist' : 'Frist'}</span>
+    </li>`;
+  }
+
+  function renderDay(byDate) {
+    const items = (byDate[calCursor] || []);
+    const markers = items.filter(e => !e.checkable);
+    const steps = items.filter(e => e.kind === 'step');
+    const tasks = items.filter(e => e.kind === 'agenda');
+    const d = parseDate(calCursor);
+
+    const group = (label, arr) => arr.length
+      ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
+
+    const body = (markers.length || steps.length || tasks.length)
+      ? group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks)
+      : '<div class="empty">— nichts an diesem Tag —</div>';
+
+    return `<div class="day-view">
+      <div class="day-head">
+        <span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span>
+      </div>
+      ${body}
+      <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}">
+        <input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done">
+        <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
+      </form>
+    </div>`;
+  }
+
+  function renderCalendar() {
+    const byDate = entriesByDate();
+    const cd = parseDate(calCursor);
+    const label = `${MONTHS[cd.getMonth()]} ${cd.getFullYear()}`;
+
+    const views = [['monat', 'Monat'], ['tag', 'Tag']].map(([k, l]) =>
+      `<button data-action="cal-view" data-view="${k}" class="${calView === k ? 'active' : ''}">${l}</button>`).join('');
+
+    return `<div class="cal-toolbar">
+        <div class="cal-views">${views}</div>
+        <span class="cal-period">${label}</span>
+        <div class="cal-nav">
+          <button data-action="cal-prev" aria-label="Zurück">‹</button>
+          <button class="cal-today" data-action="cal-today">Heute</button>
+          <button data-action="cal-next" aria-label="Vor">›</button>
+        </div>
+      </div>
+      ${calView === 'monat' ? renderMonth(byDate) : renderDay(byDate)}`;
+  }
+
   function render() {
     if (editing) return;
     for (const btn of tabbar.querySelectorAll('.tab')) {
       btn.classList.toggle('active', btn.dataset.tab === activeTab);
     }
-    view.innerHTML = activeTab === 'quests' ? renderQuests() : renderLists();
+    view.innerHTML = activeTab === 'calendar' ? renderCalendar()
+      : activeTab === 'quests' ? renderQuests()
+      : renderLists();
 
     if (refocusSel) {
       const el = view.querySelector(refocusSel);
@@ -608,6 +766,41 @@
       case 'quest-cat':
         questCat = el.dataset.cat;
         activeQuestId = null;
+        break;
+
+      case 'cal-view':
+        calView = el.dataset.view === 'tag' ? 'tag' : 'monat';
+        break;
+      case 'cal-prev':
+        calCursor = calView === 'monat' ? addMonths(calCursor, -1) : addDays(calCursor, -1);
+        break;
+      case 'cal-next':
+        calCursor = calView === 'monat' ? addMonths(calCursor, 1) : addDays(calCursor, 1);
+        break;
+      case 'cal-today':
+        calCursor = todayStr();
+        break;
+      case 'cal-day':
+        calCursor = el.dataset.date;
+        calView = 'tag';
+        break;
+      case 'open-quest-from-cal': {
+        const q = state.quests.find(q => q.id === id);
+        if (!q) return;
+        activeTab = 'quests';
+        questCat = q.category;
+        activeQuestId = q.id;
+        break;
+      }
+      case 'toggle-agenda': {
+        const a = state.agenda.find(a => a.id === id);
+        if (!a) return;
+        a.done = !a.done;
+        a.doneAt = a.done ? nowISO() : null;
+        break;
+      }
+      case 'del-agenda':
+        state.agenda = state.agenda.filter(a => a.id !== id);
         break;
 
       case 'open-quest':
@@ -763,9 +956,12 @@
       case 'add-step': {
         const q = state.quests.find(q => q.id === form.dataset.quest);
         if (!q) return;
-        q.steps.push(newNode(text));
+        const node = newNode(text);
+        const di = form.querySelector('.add-date');
+        if (di && isDateStr(di.value)) node.deadline = di.value;
+        q.steps.push(node);
         syncQuestDone(q);
-        refocusSel = `form[data-action="add-step"][data-quest="${q.id}"] input`;
+        refocusSel = `form[data-action="add-step"][data-quest="${q.id}"] input[type="text"]`;
         break;
       }
 
@@ -773,11 +969,21 @@
         const q = state.quests.find(q => q.id === form.dataset.quest);
         const parent = q && findNode(q.steps, form.dataset.parent);
         if (!parent) return;
+        const node = newNode(text);
+        const di = form.querySelector('.add-date');
+        if (di && isDateStr(di.value)) node.deadline = di.value;
         parent.done = false;
         parent.open = true;
-        parent.steps.push(newNode(text));
+        parent.steps.push(node);
         syncQuestDone(q);
-        refocusSel = `form[data-action="add-sub"][data-parent="${parent.id}"] input`;
+        refocusSel = `form[data-action="add-sub"][data-parent="${parent.id}"] input[type="text"]`;
+        break;
+      }
+
+      case 'add-agenda': {
+        const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr();
+        state.agenda.push({ id: uid(), text, date, done: false, doneAt: null });
+        refocusSel = `form[data-action="add-agenda"] input[type="text"]`;
         break;
       }
 
