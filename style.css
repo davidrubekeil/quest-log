@@ -381,6 +381,119 @@ input { font: inherit; color: inherit; }
   color: var(--muted);
 }
 
+/* ---------- Quests: Gruppen, Priorität, Restzeit ---------- */
+
+.group-label {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 4px 0 8px;
+  padding-left: 2px;
+}
+
+/* Prioritäts-Marker: kleines Quadrat, kein Rounding */
+.prio-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--ink);
+}
+
+.qpct {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.rest {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.rest.over {
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* Meta-Zeile (aufgeklappt): Priorität + Start/Ende */
+.meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.prio-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--rule);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.date-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.date-field input {
+  border: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 16px; /* verhindert iOS-Zoom beim Fokussieren */
+  padding: 1px 4px;
+  color: var(--ink);
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0;
+}
+
+/* ---------- Quests: Zeitbalken Start → Deadline ---------- */
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.time-row .track {
+  position: relative;
+  overflow: visible;
+}
+
+.time-row .time-fill { background: var(--muted); }
+
+.time-row .track.over .time-fill { background: var(--red); }
+
+.time-row .mark {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 1.5px;
+  background: var(--ink);
+  transform: translateX(-50%);
+}
+
 /* ---------- Quests: Fortschritt ---------- */
 
 .progress-row {

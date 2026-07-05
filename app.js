@@ -1,5 +1,5 @@
 /* Quest-Log — App-Logik
-   Persönliches Projekt-Register: Quests (hierarchisch) + Listen.
+   Persönliches Projekt-Register: Quests (hierarchisch, mit Deadline/Priorität) + Listen.
    Persistenz: localStorage, Key questlog-state-v3.
    Ältere v1/v2-Daten werden beim ersten Laden on-the-fly migriert. */
 
@@ -16,6 +16,13 @@
     { key: 'side', label: 'Side' },
   ];
 
+  const PRIOS = [
+    { key: 'hoch',    label: 'Hoch',    color: 'var(--red)' },
+    { key: 'mittel',  label: 'Mittel',  color: '#C9A24B' },
+    { key: 'niedrig', label: 'Niedrig', color: 'var(--muted)' },
+  ];
+  const prioOf = k => PRIOS.find(p => p.key === k) || PRIOS[1];
+
   /* ---------- Helfer ---------- */
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -31,7 +38,18 @@
     return isNaN(d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   };
 
-  /* ---------- Streak-Logik (pro Quest) ---------- */
+  /* Datums-Helfer auf Basis "YYYY-MM-DD" (lokale Zeitzone, taggenau) */
+  const isDateStr = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const parseDate = ds => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d); };
+  const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 864e5); // b − a in Tagen
+  const daysUntil = ds => dayDiff(todayStr(), ds);
+  const fmtShort = ds => { const [, m, d] = ds.split('-'); return `${d}.${m}.`; };
+  const fmtRest = n =>
+    n < 0 ? 'überfällig' :
+    n === 0 ? 'heute' :
+    n === 1 ? 'morgen' : `in ${n} Tagen`;
+
+  /* ---------- Streak (intern weitergeführt, aktuell ohne Anzeige) ---------- */
 
   const freshStreak = () => ({ currentStreak: 0, longestStreak: 0, lastActiveDate: null });
 
@@ -41,8 +59,6 @@
     lastActiveDate: typeof s.lastActiveDate === 'string' ? s.lastActiveDate : null,
   };
 
-  /* Beim Arbeiten an der Quest (Schritt abhaken): heute schon aktiv → nichts;
-     gestern aktiv → +1; sonst Neustart bei 1. */
   function touchStreak(s) {
     const today = todayStr();
     if (s.lastActiveDate !== today) {
@@ -52,7 +68,6 @@
     s.longestStreak = Math.max(s.longestStreak, s.currentStreak);
   }
 
-  /* Beim Öffnen/Tageswechsel: mehr als 1 Tag inaktiv → currentStreak auf 0. */
   function auditStreak(s) {
     if (s.currentStreak !== 0 && s.lastActiveDate !== todayStr() && s.lastActiveDate !== yesterdayStr()) {
       s.currentStreak = 0;
@@ -92,6 +107,12 @@
       const r = countLeaves(c);
       return { done: a.done + r.done, total: a.total + r.total };
     }, { done: 0, total: 0 });
+  }
+
+  /* Fortschritt in % über alle Ebenen (Quests ohne Schritte: 0 oder 100). */
+  function questPct(q) {
+    const { done, total } = questLeaves(q);
+    return total ? Math.round(done / total * 100) : (q.done ? 100 : 0);
   }
 
   function findNode(nodes, id) {
@@ -149,7 +170,7 @@
     };
   }
 
-  /* Bringt v1/v2/v3 in die aktuelle Form. Tagesaufgaben/Kategorien entfallen. */
+  /* Bringt v1/v2/v3 in die aktuelle Form; neue Felder bekommen Defaults. */
   function sanitizeState(raw) {
     const s = emptyState();
     if (!raw || typeof raw !== 'object') return s;
@@ -174,6 +195,10 @@
           category: q.category === 'side' ? 'side' : 'main',
           done: !!q.done,
           doneAt: q.doneAt || null,
+          priority: PRIOS.some(p => p.key === q.priority) ? q.priority : 'mittel',
+          createdAt: isDateStr(q.createdAt) ? q.createdAt : todayStr(),
+          start: isDateStr(q.start) ? q.start : null,
+          deadline: isDateStr(q.deadline) ? q.deadline : null,
           steps: (Array.isArray(q.steps) ? q.steps : []).map(normalizeNode).filter(Boolean),
           streak: sanitizeStreak(q.streak),
           open: q.open === undefined ? true : !!q.open,
@@ -232,11 +257,6 @@
       `${WEEKDAYS[d.getDay()]} ${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}`;
   }
 
-  function streakHtml(s) {
-    return `<span class="streak${s.currentStreak > 0 ? ' on' : ''}" title="Rekord: ${s.longestStreak}">
-      ${ICONS.streak}<span>${s.currentStreak}</span></span>`;
-  }
-
   /* Rekursive Schritt-Zeile inkl. beliebig tiefer Unterschritte. */
   function renderNode(node, questId) {
     const leaf = isLeaf(node);
@@ -268,38 +288,76 @@
     </li>`;
   }
 
+  /* Zeitbalken Start → Deadline mit Heute-Marker; nur bei gesetzter Deadline. */
+  function timeRow(q) {
+    if (!q.deadline) return '';
+    const start = q.start || q.createdAt;
+    const total = dayDiff(start, q.deadline);
+    const gone = dayDiff(start, todayStr());
+    const pct = total <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(gone / total * 100)));
+    const over = daysUntil(q.deadline) < 0;
+    return `<div class="time-row">
+      <span>${fmtShort(start)}</span>
+      <div class="track${over ? ' over' : ''}">
+        <div class="fill time-fill" style="width:${pct}%"></div>
+        <div class="mark" style="left:${pct}%"></div>
+      </div>
+      <span>${fmtShort(q.deadline)}</span>
+    </div>`;
+  }
+
   function renderQuest(q) {
     const a = questAccent(q.id);
     const { done, total } = questLeaves(q);
-    const pct = total ? Math.round(done / total * 100) : 0;
+    const pct = questPct(q);
     const hasSteps = total > 0;
+    const p = prioOf(q.priority);
+    const du = q.deadline ? daysUntil(q.deadline) : null;
 
     const control = hasSteps
-      ? `<span class="checkbox static" aria-hidden="true">${ICONS.check}</span>`
+      ? ''
       : `<button class="checkbox" data-action="toggle-quest" data-id="${q.id}" aria-label="Quest abhaken">${ICONS.check}</button>`;
 
     return `<section class="block accented${q.open ? ' open' : ''}" style="--accent:${a.line};--accent-tint:${a.tint}">
       <header class="block-head${q.done ? ' done' : ''}">
         <button class="chev" data-action="toggle-quest-open" data-id="${q.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
+        <span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>
         ${control}
-        <span class="block-ico">${ICONS.quest}</span>
         <h2 class="${q.done ? 'done' : ''}">${esc(q.title)}</h2>
         ${q.done ? '<span class="stamp">Erledigt</span>' : ''}
-        ${streakHtml(q.streak)}
+        <span class="qpct">${pct}%</span>
+        ${du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : ''}
         <button class="del" data-action="del-quest" data-id="${q.id}" aria-label="Quest löschen">${ICONS.x}</button>
       </header>
       ${q.open ? `
+        <div class="meta-row">
+          <button class="prio-btn" data-action="cycle-prio" data-id="${q.id}">
+            <span class="prio-dot" style="background:${p.color}"></span>${p.label}
+          </button>
+          <label class="date-field">Start
+            <input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}">
+          </label>
+          <label class="date-field">Ende
+            <input type="date" data-field="deadline" data-id="${q.id}" value="${q.deadline || ''}">
+          </label>
+        </div>
         ${hasSteps ? `<div class="progress-row">
           <span>${done}/${total}</span>
           <div class="track"><div class="fill" style="width:${pct}%"></div></div>
           <span class="pct">${pct}%</span>
         </div>` : ''}
+        ${timeRow(q)}
         <ul class="tree">${q.steps.map(n => renderNode(n, q.id)).join('')}</ul>
         <form class="add-row" data-action="add-step" data-quest="${q.id}">
           <input type="text" placeholder="Neuer Schritt …" autocomplete="off" enterkeyhint="done">
           <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
         </form>` : ''}
     </section>`;
+  }
+
+  function renderGroup(label, quests) {
+    if (!quests.length) return '';
+    return `<div class="group-label">${label}</div>${quests.map(renderQuest).join('')}`;
   }
 
   function renderQuests() {
@@ -312,11 +370,14 @@
         ${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
 
     const quests = state.quests.filter(q => q.category === questCat);
+    const withDl = quests.filter(q => q.deadline)
+      .sort((x, y) => x.deadline < y.deadline ? -1 : x.deadline > y.deadline ? 1 : 0);
+    const withoutDl = quests.filter(q => !q.deadline);
 
     return `<div class="board-title">Questlog</div>
       <div class="seg">${tabs}</div>
       ${quests.length
-        ? quests.map(renderQuest).join('')
+        ? renderGroup('Mit Deadline', withDl) + renderGroup('Ohne Deadline', withoutDl)
         : '<div class="empty">— keine Quests in dieser Kategorie —</div>'}
       <form class="add-row add-block" data-action="add-quest">
         <input type="text" placeholder="Neue ${questCat === 'main' ? 'Main' : 'Side'}-Quest …" autocomplete="off" enterkeyhint="done">
@@ -401,6 +462,13 @@
         state.quests = state.quests.filter(x => x.id !== id);
         break;
       }
+      case 'cycle-prio': {
+        const q = state.quests.find(q => q.id === id);
+        if (!q) return;
+        const i = PRIOS.findIndex(p => p.key === q.priority);
+        q.priority = PRIOS[(i + 1) % PRIOS.length].key;
+        break;
+      }
 
       case 'toggle-open': {
         const q = state.quests.find(q => q.id === questId);
@@ -440,7 +508,7 @@
       case 'toggle-item': {
         const l = state.lists.find(l => l.id === listId);
         const i = l && l.items.find(i => i.id === id);
-        if (i) i.done = !i.done; // Listen: bewusst ohne Streak
+        if (i) i.done = !i.done;
         break;
       }
       case 'del-item': {
@@ -452,6 +520,19 @@
       default: return;
     }
 
+    save();
+    render();
+  });
+
+  /* Datumsfelder (Start/Ende) — leeres Feld löscht den Wert. */
+  view.addEventListener('change', e => {
+    const input = e.target.closest('input[type="date"][data-field]');
+    if (!input) return;
+    const q = state.quests.find(q => q.id === input.dataset.id);
+    if (!q) return;
+    const v = isDateStr(input.value) ? input.value : null;
+    if (input.dataset.field === 'start') q.start = v;
+    else q.deadline = v;
     save();
     render();
   });
@@ -468,7 +549,9 @@
       case 'add-quest':
         state.quests.push({
           id: uid(), title: text, category: questCat,
-          done: false, doneAt: null, steps: [], streak: freshStreak(), open: true,
+          done: false, doneAt: null,
+          priority: 'mittel', createdAt: todayStr(), start: null, deadline: null,
+          steps: [], streak: freshStreak(), open: true,
         });
         refocusSel = 'form[data-action="add-quest"] input';
         break;
@@ -520,7 +603,8 @@
     render();
   });
 
-  /* Beim Zurückkehren in die App: Tageswechsel erkennen, abgelaufene Streaks nullen. */
+  /* Beim Zurückkehren in die App: Tageswechsel erkennen (Restzeiten/Zeitbalken
+     aktualisieren, abgelaufene Streaks intern nullen). */
   function onReturn() {
     if (document.visibilityState !== 'visible') return;
     const changed = auditAllStreaks();
