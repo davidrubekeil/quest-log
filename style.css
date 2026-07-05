@@ -13,6 +13,7 @@
   --muted: #8B8577;
   --red:   #A6352A;
   --blue:  #3D5A73;
+  --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -83,7 +84,7 @@ input { font: inherit; color: inherit; }
 /* ---------- Inhalt ---------- */
 
 .view {
-  max-width: 780px;
+  max-width: 1160px;
   margin: 0 auto;
   padding: 8px 32px 96px;
 }
@@ -160,6 +161,156 @@ input { font: inherit; color: inherit; }
   text-transform: uppercase;
   color: var(--muted);
   margin: 18px 0 10px;
+}
+
+/* ---------- Board: Übersicht vs. 3-Spalten-Detail ---------- */
+
+.board { max-width: 760px; margin: 0 auto; }
+
+.board.detail {
+  max-width: none;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+}
+
+.board.detail .col-list { padding-right: 28px; border-right: 1px solid var(--rule); }
+.board.detail .col-steps { padding: 0 28px; border-right: 1px solid var(--rule); }
+.board.detail .col-notes { padding-left: 28px; }
+
+.col-head {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.back {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 20px;
+  transition: color 0.12s;
+}
+.back:hover { color: var(--ink); }
+
+/* Quest-Zeile in der Bereichsliste */
+.qwrap { position: relative; }
+
+.qrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--hair);
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+}
+
+.qrow:hover { background: var(--hair); }
+.qrow.active { background: var(--hair); cursor: default; }
+
+.qdot { flex: none; width: 9px; height: 9px; border: 1px solid var(--ink); }
+
+.qrow .checkbox { width: 16px; height: 16px; }
+.qrow .checkbox .ico { width: 10px; height: 10px; }
+
+.qname {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.qrow.active .qname { letter-spacing: 0.04em; }
+.qrow.done .qname { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--rule); }
+
+.flow-badge {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flow);
+}
+
+/* Kurzinfos unter dem hervorgehobenen Questnamen */
+.qmeta {
+  padding: 8px 6px 14px 25px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.sel-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sel-field select {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 3px 6px;
+}
+
+/* Notizen-Spalte */
+.notes {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 12px;
+  outline: none;
+}
+.notes:focus { border-color: var(--muted); }
+
+/* Hover über einen Bereich graut die anderen aus (nur in der Übersicht) */
+.board:not(.detail) .col-list:has(.board-section:hover) .board-section:not(:hover) {
+  opacity: 0.4;
+  transition: opacity 0.12s;
+}
+
+/* In der Detailansicht: alles außer der aktiven Quest ausgegraut */
+.board.has-active .board-section:not(.has-active) { opacity: 0.4; }
+.board.has-active .board-section.has-active .qrow:not(.active) { opacity: 0.45; }
+.board.has-active .add-block { opacity: 0.4; }
+
+/* Auswahl-Dropdown im Anlege-Formular */
+.add-row .add-type {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 4px 6px;
+}
+
+/* Schmale Fenster: Spalten stapeln */
+@media (max-width: 940px) {
+  .board.detail { grid-template-columns: 1fr; gap: 24px; }
+  .board.detail .col-list,
+  .board.detail .col-steps { padding: 0; border-right: none; }
+  .board.detail .col-notes { padding-left: 0; }
 }
 
 /* ---------- Blöcke (Quests, Listen) — entlinkt: nur linker Akzent ---------- */
