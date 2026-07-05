@@ -1,21 +1,21 @@
 /* Quest-Log — App-Logik
-   Persönliches Projekt-Register (Mac): Quests (hierarchisch) + Listen.
-   Übersicht mit Bereichen → Klick auf eine Quest öffnet die 3-Spalten-Detailansicht
-   (Auswahl/Kurzinfos · Schritte · Notizen). Quests sind entweder „Mit Frist"
-   (Priorität + Deadline) oder „Laufend" (grüner Marker, ohne Frist/Priorität).
-   Persistenz: localStorage, Key questlog-state-v3. v1/v2 werden migriert. */
+   3 Ebenen: Quest → Schritt → Unterschritt (Unterschritte rekursiv, aber simpel).
+   - Quest: Priorität, Typ (Frist/Laufend), Bereich, Deadline/Start, Fortschritt,
+     Kontext (Fokus, nächster Schritt, Milestones, Notizen).
+   - Schritt: Typ (Frist/Laufend) bzw. Termin, Kontext (nächster-Schritt-Toggle, Notizen). Keine Priorität.
+   - Unterschritt: nur Text + Häkchen; kann rekursiv weiter unterteilt werden.
+   Kalender (Monat/Tag) als eigener Reiter. Persistenz: localStorage (questlog-state-v3). */
 
 (() => {
   'use strict';
 
-  /* ---------- Konstanten ---------- */
-
   const KEYS = ['questlog-state-v3', 'questlog-state-v2', 'questlog-state-v1'];
   const KEY_SAVE = KEYS[0];
 
-  const QUEST_CATS = [
+  const QUEST_TABS = [
     { key: 'main', label: 'Main' },
     { key: 'side', label: 'Side' },
+    { key: 'erledigt', label: 'Erledigt' },
   ];
 
   const PRIOS = [
@@ -30,7 +30,6 @@
     { key: 'kreatives', label: 'Kreatives und Sport' },
     { key: 'buero',     label: 'Büro' },
   ];
-  const sectionOf = k => SECTIONS.find(s => s.key === k) || SECTIONS[0];
 
   const TYPES = [
     { key: 'frist',   label: 'Mit Frist' },
@@ -47,38 +46,30 @@
   const dateStr = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const todayStr = () => dateStr(new Date());
   const yesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dateStr(d); };
-  const timeHM = iso => {
-    const d = new Date(iso);
-    return isNaN(d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  };
+  const timeHM = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 
   const isDateStr = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
   const parseDate = ds => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d); };
   const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 864e5);
   const daysUntil = ds => dayDiff(todayStr(), ds);
   const fmtShort = ds => { const [, m, d] = ds.split('-'); return `${d}.${m}.`; };
-  const fmtRest = n =>
-    n < 0 ? 'überfällig' :
-    n === 0 ? 'heute' :
-    n === 1 ? 'morgen' : `in ${n} Tagen`;
+  const fmtRest = n => n < 0 ? 'überfällig' : n === 0 ? 'heute' : n === 1 ? 'morgen' : `in ${n} Tagen`;
 
   const addDays = (ds, n) => { const d = parseDate(ds); d.setDate(d.getDate() + n); return dateStr(d); };
   const addMonths = (ds, n) => { const d = parseDate(ds); d.setDate(1); d.setMonth(d.getMonth() + n); return dateStr(d); };
   const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
   const WD_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const WD_FULL = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-  const wdIndexMon = d => (d.getDay() + 6) % 7; // Montag = 0
+  const wdIndexMon = d => (d.getDay() + 6) % 7;
 
-  /* ---------- Streak (intern weitergeführt, ohne Anzeige) ---------- */
+  /* ---------- Streak (intern) ---------- */
 
   const freshStreak = () => ({ currentStreak: 0, longestStreak: 0, lastActiveDate: null });
-
   const sanitizeStreak = s => (!s || typeof s !== 'object') ? freshStreak() : {
     currentStreak: Number.isFinite(s.currentStreak) ? s.currentStreak : 0,
     longestStreak: Number.isFinite(s.longestStreak) ? s.longestStreak : 0,
     lastActiveDate: typeof s.lastActiveDate === 'string' ? s.lastActiveDate : null,
   };
-
   function touchStreak(s) {
     const today = todayStr();
     if (s.lastActiveDate !== today) {
@@ -87,125 +78,68 @@
     }
     s.longestStreak = Math.max(s.longestStreak, s.currentStreak);
   }
-
   function auditStreak(s) {
-    if (s.currentStreak !== 0 && s.lastActiveDate !== todayStr() && s.lastActiveDate !== yesterdayStr()) {
-      s.currentStreak = 0;
-      return true;
-    }
+    if (s.currentStreak !== 0 && s.lastActiveDate !== todayStr() && s.lastActiveDate !== yesterdayStr()) { s.currentStreak = 0; return true; }
     return false;
   }
+  function auditAllStreaks() { let ch = false; for (const q of state.quests) ch = auditStreak(q.streak) || ch; return ch; }
 
-  function auditAllStreaks() {
-    let changed = false;
-    for (const q of state.quests) changed = auditStreak(q.streak) || changed;
-    return changed;
-  }
+  /* ---------- Unterschritt (rekursiv, simpel) ---------- */
 
-  /* ---------- Baum-Helfer ---------- */
+  const newSub = text => ({ id: uid(), text, done: false, doneAt: null, subs: [], open: false });
+  const subDone = s => s.subs.length ? s.subs.every(subDone) : !!s.done;
+  const subLeaves = s => s.subs.length
+    ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
+    : { done: s.done ? 1 : 0, total: 1 };
+  function findSubRec(subs, id) { for (const s of subs) { if (s.id === id) return s; const f = findSubRec(s.subs, id); if (f) return f; } return null; }
+  function removeSubRec(subs, id) { const i = subs.findIndex(s => s.id === id); if (i >= 0) { subs.splice(i, 1); return true; } for (const s of subs) if (removeSubRec(s.subs, id)) return true; return false; }
 
-  const newNode = text => ({
-    id: uid(), text, done: false, doneAt: null,
-    priority: 'mittel', deadline: null, steps: [], open: false,
-  });
+  /* ---------- Schritt ---------- */
 
-  const isLeaf = n => n.steps.length === 0;
-  function isNodeDone(n) { return isLeaf(n) ? !!n.done : n.steps.every(isNodeDone); }
+  const newStep = text => ({ id: uid(), text, type: 'frist', deadline: null, notes: '', done: false, doneAt: null, subs: [] });
+  const stepHasSubs = s => s.subs.length > 0;
+  const stepDone = s => stepHasSubs(s) ? s.subs.every(subDone) : !!s.done;
+  const stepLeaves = s => stepHasSubs(s)
+    ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
+    : { done: s.done ? 1 : 0, total: 1 };
 
-  function countLeaves(n) {
-    if (isLeaf(n)) return { done: n.done ? 1 : 0, total: 1 };
-    return n.steps.reduce((a, c) => {
-      const r = countLeaves(c);
-      return { done: a.done + r.done, total: a.total + r.total };
-    }, { done: 0, total: 0 });
-  }
+  function questLeaves(q) { return q.steps.reduce((a, s) => { const r = stepLeaves(s); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 }); }
+  function questPct(q) { const { done, total } = questLeaves(q); return total ? Math.round(done / total * 100) : (q.done ? 100 : 0); }
 
-  function questLeaves(q) {
-    return q.steps.reduce((a, c) => {
-      const r = countLeaves(c);
-      return { done: a.done + r.done, total: a.total + r.total };
-    }, { done: 0, total: 0 });
-  }
-
-  function questPct(q) {
-    const { done, total } = questLeaves(q);
-    return total ? Math.round(done / total * 100) : (q.done ? 100 : 0);
-  }
-
-  function effDeadline(node) {
-    if (isNodeDone(node)) return null;
-    let best = node.deadline || null;
-    for (const c of node.steps) { const e = effDeadline(c); if (e && (!best || e < best)) best = e; }
-    return best;
-  }
-
+  const stepEffDeadline = s => (stepDone(s) || s.type === 'laufend') ? null : s.deadline;
   function questEffDeadline(q) {
     if (q.done || q.type === 'laufend') return null;
     let best = q.deadline || null;
-    for (const s of q.steps) { const e = effDeadline(s); if (e && (!best || e < best)) best = e; }
+    for (const s of q.steps) { const e = stepEffDeadline(s); if (e && (!best || e < best)) best = e; }
     return best;
   }
 
-  function byUrgency(a, b) {
-    const ad = isNodeDone(a), bd = isNodeDone(b);
-    if (ad !== bd) return ad ? 1 : -1;
-    const ae = effDeadline(a), be = effDeadline(b);
-    if (ae && be) return ae < be ? -1 : ae > be ? 1 : 0;
-    if (ae) return -1;
-    if (be) return 1;
-    return 0;
-  }
-  const sortedSteps = arr => arr.slice().sort(byUrgency);
+  const byStepUrgency = (a, b) => { const ae = stepEffDeadline(a), be = stepEffDeadline(b); if (ae && be) return ae < be ? -1 : ae > be ? 1 : 0; if (ae) return -1; if (be) return 1; return 0; };
+  const byQuestUrgency = (x, y) => { const xe = questEffDeadline(x), ye = questEffDeadline(y); if (xe && ye) return xe < ye ? -1 : xe > ye ? 1 : 0; if (xe) return -1; if (ye) return 1; return 0; };
+  const byDoneAt = (a, b) => (b.doneAt || '').localeCompare(a.doneAt || '');
 
-  const byQuestUrgency = (x, y) => {
-    const xe = questEffDeadline(x), ye = questEffDeadline(y);
-    if (xe && ye) return xe < ye ? -1 : xe > ye ? 1 : 0;
-    if (xe) return -1;
-    if (ye) return 1;
-    return 0;
-  };
-
-  function findNode(nodes, id) {
-    for (const n of nodes) {
-      if (n.id === id) return n;
-      const f = findNode(n.steps, id);
-      if (f) return f;
-    }
-    return null;
-  }
-
-  function removeNode(nodes, id) {
-    const i = nodes.findIndex(n => n.id === id);
-    if (i >= 0) { nodes.splice(i, 1); return true; }
-    for (const n of nodes) if (removeNode(n.steps, id)) return true;
-    return false;
-  }
+  const findStep = (q, id) => q.steps.find(s => s.id === id);
 
   function syncQuestDone(q) {
     const { done, total } = questLeaves(q);
     if (total === 0) return;
-    if (done === total) {
-      if (!q.done) { q.done = true; q.doneAt = nowISO(); }
-    } else {
-      q.done = false; q.doneAt = null;
+    if (done === total) { if (!q.done) { q.done = true; q.doneAt = nowISO(); } }
+    else { q.done = false; q.doneAt = null; }
+  }
+
+  /* erstes erledigtes Blatt wieder öffnen (Reaktivieren aus dem Archiv) */
+  function reopenFirstLeaf(q) {
+    const inSub = subs => { for (const s of subs) { if (s.subs.length) { if (inSub(s.subs)) return true; } else if (s.done) { s.done = false; s.doneAt = null; return true; } } return false; };
+    for (const st of q.steps) {
+      if (st.subs.length) { if (inSub(st.subs)) return true; }
+      else if (st.done) { st.done = false; st.doneAt = null; return true; }
     }
+    return false;
   }
 
-  /* ---------- State, Migration, Persistenz ---------- */
+  /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [] });
-
-  /* Freie Tagesaufgaben (gehören zu keiner Quest, nur im Kalender). */
-  function normalizeAgenda(raw) {
-    if (!raw || typeof raw !== 'object' || !isDateStr(raw.date)) return null;
-    return {
-      id: raw.id || uid(),
-      text: String(raw.text ?? ''),
-      date: raw.date,
-      done: !!raw.done,
-      doneAt: raw.doneAt || null,
-    };
-  }
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null });
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -213,21 +147,36 @@
     return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done };
   }
 
-  function normalizeNode(raw) {
-    if (typeof raw === 'string') return newNode(raw);
+  const kidsOf = n => Array.isArray(n.subs) ? n.subs : (Array.isArray(n.steps) ? n.steps : (Array.isArray(n.items) ? n.items : []));
+
+  function normalizeSub(raw) {
+    if (typeof raw === 'string') return newSub(raw);
     if (!raw || typeof raw !== 'object') return null;
-    const kids = Array.isArray(raw.steps) ? raw.steps
-      : Array.isArray(raw.items) ? raw.items : [];
+    return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done, doneAt: raw.doneAt || null, subs: kidsOf(raw).map(normalizeSub).filter(Boolean), open: !!raw.open };
+  }
+  function normalizeStep(raw) {
+    if (typeof raw === 'string') return newStep(raw);
+    if (!raw || typeof raw !== 'object') return null;
     return {
-      id: raw.id || uid(),
-      text: String(raw.text ?? raw.name ?? ''),
-      done: !!raw.done,
-      doneAt: raw.doneAt || null,
-      priority: PRIOS.some(p => p.key === raw.priority) ? raw.priority : 'mittel',
+      id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''),
+      type: raw.type === 'laufend' ? 'laufend' : 'frist',
       deadline: isDateStr(raw.deadline) ? raw.deadline : null,
-      steps: kids.map(normalizeNode).filter(Boolean),
-      open: !!raw.open,
+      notes: typeof raw.notes === 'string' ? raw.notes : '',
+      done: !!raw.done, doneAt: raw.doneAt || null,
+      subs: kidsOf(raw).map(normalizeSub).filter(Boolean),
     };
+  }
+  function normalizeMilestone(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return { id: raw.id || uid(), text: String(raw.text ?? ''), deadline: isDateStr(raw.deadline) ? raw.deadline : null };
+  }
+  function normalizeAgenda(raw) {
+    if (!raw || typeof raw !== 'object' || !isDateStr(raw.date)) return null;
+    return { id: raw.id || uid(), text: String(raw.text ?? ''), date: raw.date, done: !!raw.done, doneAt: raw.doneAt || null };
+  }
+  function normalizeEvent(raw) {
+    if (!raw || typeof raw !== 'object' || !isDateStr(raw.start)) return null;
+    return { id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start, end: isDateStr(raw.end) ? raw.end : null, notes: typeof raw.notes === 'string' ? raw.notes : '' };
   }
 
   function sanitizeState(raw) {
@@ -235,71 +184,65 @@
     if (!raw || typeof raw !== 'object') return s;
 
     if (Array.isArray(raw.lists)) {
-      s.lists = raw.lists
-        .filter(l => l && typeof l === 'object')
-        .map(l => ({
-          id: l.id || uid(),
-          name: String(l.name ?? ''),
-          open: !!l.open,
-          items: (Array.isArray(l.items) ? l.items : []).map(normalizeItem).filter(Boolean),
-        }));
+      s.lists = raw.lists.filter(l => l && typeof l === 'object').map(l => ({
+        id: l.id || uid(), name: String(l.name ?? ''), open: !!l.open,
+        items: (Array.isArray(l.items) ? l.items : []).map(normalizeItem).filter(Boolean),
+      }));
     }
 
     if (Array.isArray(raw.quests)) {
-      s.quests = raw.quests
-        .filter(q => q && typeof q === 'object')
-        .map(q => ({
-          id: q.id || uid(),
-          title: String(q.title ?? ''),
-          category: q.category === 'side' ? 'side' : 'main',
-          section: SECTIONS.some(x => x.key === q.section) ? q.section : 'studium',
-          type: q.type === 'laufend' ? 'laufend' : 'frist',
-          notes: typeof q.notes === 'string' ? q.notes : '',
-          done: !!q.done,
-          doneAt: q.doneAt || null,
-          priority: PRIOS.some(p => p.key === q.priority) ? q.priority : 'mittel',
-          createdAt: isDateStr(q.createdAt) ? q.createdAt : todayStr(),
-          start: isDateStr(q.start) ? q.start : null,
-          deadline: isDateStr(q.deadline) ? q.deadline : null,
-          steps: (Array.isArray(q.steps) ? q.steps : []).map(normalizeNode).filter(Boolean),
-          streak: sanitizeStreak(q.streak),
-          open: q.open === undefined ? true : !!q.open,
-        }));
-      for (const q of s.quests) syncQuestDone(q);
+      s.quests = raw.quests.filter(q => q && typeof q === 'object').map(q => ({
+        id: q.id || uid(), title: String(q.title ?? ''),
+        category: q.category === 'side' ? 'side' : 'main',
+        section: SECTIONS.some(x => x.key === q.section) ? q.section : 'studium',
+        type: q.type === 'laufend' ? 'laufend' : 'frist',
+        notes: typeof q.notes === 'string' ? q.notes : '',
+        done: !!q.done, doneAt: q.doneAt || null,
+        priority: PRIOS.some(p => p.key === q.priority) ? q.priority : 'mittel',
+        createdAt: isDateStr(q.createdAt) ? q.createdAt : todayStr(),
+        start: isDateStr(q.start) ? q.start : null,
+        deadline: isDateStr(q.deadline) ? q.deadline : null,
+        milestones: (Array.isArray(q.milestones) ? q.milestones : []).map(normalizeMilestone).filter(Boolean),
+        nextStepId: typeof q.nextStepId === 'string' ? q.nextStepId : null,
+        steps: (Array.isArray(q.steps) ? q.steps : []).map(normalizeStep).filter(Boolean),
+        streak: sanitizeStreak(q.streak),
+      }));
+      for (const q of s.quests) { syncQuestDone(q); if (q.nextStepId && !findStep(q, q.nextStepId)) q.nextStepId = null; }
     }
 
-    if (Array.isArray(raw.agenda)) {
-      s.agenda = raw.agenda.map(normalizeAgenda).filter(Boolean);
-    }
-
+    if (Array.isArray(raw.agenda)) s.agenda = raw.agenda.map(normalizeAgenda).filter(Boolean);
+    if (Array.isArray(raw.events)) s.events = raw.events.map(normalizeEvent).filter(Boolean);
+    if (typeof raw.focusQuestId === 'string') s.focusQuestId = raw.focusQuestId;
     return s;
   }
 
   function loadState() {
     for (const key of KEYS) {
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw) return sanitizeState(JSON.parse(raw));
-      } catch (e) { console.warn(`Quest-Log: ${key} unlesbar`, e); }
+      try { const raw = localStorage.getItem(key); if (raw) return sanitizeState(JSON.parse(raw)); }
+      catch (e) { console.warn(`Quest-Log: ${key} unlesbar`, e); }
     }
     return emptyState();
   }
+  function save() { try { localStorage.setItem(KEY_SAVE, JSON.stringify(state)); } catch (e) { console.warn('Quest-Log: Speichern fehlgeschlagen', e); } }
 
-  function save() {
-    try {
-      localStorage.setItem(KEY_SAVE, JSON.stringify(state));
-    } catch (e) { console.warn('Quest-Log: Speichern fehlgeschlagen', e); }
+  /* ---------- Kalender-Aggregation ---------- */
+
+  function collectEntries() {
+    const out = [];
+    for (const q of state.quests) {
+      if (q.deadline) out.push({ date: q.deadline, kind: 'quest', questId: q.id, text: q.title, done: q.done, checkable: false });
+      for (const s of q.steps) {
+        if (s.deadline && s.type !== 'laufend') {
+          const hasSubs = stepHasSubs(s);
+          out.push({ date: s.deadline, kind: hasSubs ? 'branch' : 'step', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s), checkable: !hasSubs });
+        }
+      }
+      for (const m of q.milestones) if (m.deadline) out.push({ date: m.deadline, kind: 'milestone', questId: q.id, text: m.text, questTitle: q.title, done: false, checkable: false });
+    }
+    for (const a of state.agenda) out.push({ date: a.date, kind: 'agenda', id: a.id, text: a.text, done: a.done, checkable: true });
+    return out;
   }
-
-  /* ---------- Quest-Akzent (Ton-in-Ton von --red) ---------- */
-
-  function questAccent(id) {
-    let h = 2166136261;
-    for (const c of id) h = ((h ^ c.charCodeAt(0)) * 16777619) >>> 0;
-    const hue = 5 + (h % 13) - 6;
-    const lig = 41 + ((h >> 8) % 9) - 4;
-    return { line: `hsl(${hue} 60% ${lig}%)`, tint: `hsl(${hue} 60% ${lig}% / 0.09)` };
-  }
+  function entriesByDate() { const map = {}; for (const e of collectEntries()) (map[e.date] || (map[e.date] = [])).push(e); return map; }
 
   /* ---------- Rendering ---------- */
 
@@ -309,148 +252,54 @@
   let state = loadState();
   let activeTab = 'quests';
   let questCat = 'main';
-  let activeQuestId = null; // in der Detailansicht geöffnete Quest
-  let calView = 'monat';    // 'monat' | 'tag'
+  let activeQuestId = null;
+  let activeStepId = null;
+  let stepTab = 'aktuell';
+  let calView = 'monat';
   let calCursor = todayStr();
   let dayStamp = todayStr();
   let refocusSel = null;
 
-  /* Alle datierten Einträge quest-übergreifend einsammeln.
-     kind: 'quest' (Frist, Markierung) | 'branch' (Ast mit Termin, Markierung)
-           | 'step' (Blatt mit Termin, abhakbar, zählt zum Fortschritt)
-           | 'agenda' (freie Tagesaufgabe, abhakbar). */
-  function collectEntries() {
-    const out = [];
-    const walk = (nodes, q) => {
-      for (const n of nodes) {
-        if (n.deadline) {
-          const leaf = isLeaf(n);
-          out.push({
-            date: n.deadline, kind: leaf ? 'step' : 'branch',
-            questId: q.id, nodeId: n.id, text: n.text, questTitle: q.title,
-            done: isNodeDone(n), checkable: leaf,
-          });
-        }
-        walk(n.steps, q);
-      }
-    };
-    for (const q of state.quests) {
-      if (q.deadline) out.push({ date: q.deadline, kind: 'quest', questId: q.id, text: q.title, done: q.done, checkable: false });
-      walk(q.steps, q);
-    }
-    for (const a of state.agenda) {
-      out.push({ date: a.date, kind: 'agenda', id: a.id, text: a.text, done: a.done, checkable: true });
-    }
-    return out;
-  }
-
-  function entriesByDate() {
-    const map = {};
-    for (const e of collectEntries()) (map[e.date] || (map[e.date] = [])).push(e);
-    return map;
-  }
-
   const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
   const sectionOptions = sel => SECTIONS.map(s => `<option value="${s.key}"${s.key === sel ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
   const typeOptions = sel => TYPES.map(t => `<option value="${t.key}"${t.key === sel ? ' selected' : ''}>${t.label}</option>`).join('');
+  const addMini = (action, ph, extra = '') =>
+    `<form class="addmini" data-action="${action}"${extra}><button class="plus" type="submit" aria-label="Hinzufügen">${ICONS.plus}</button><input type="text" placeholder="${ph}" autocomplete="off" enterkeyhint="done"></form>`;
 
-  /* Rekursive Schritt-Zeile (Spalte 2 der Detailansicht). */
-  function renderNode(node, questId) {
-    const leaf = isLeaf(node);
-    const done = isNodeDone(node);
-    const c = countLeaves(node);
-    const p = prioOf(node.priority);
-    const eff = effDeadline(node);
-    const du = eff ? daysUntil(eff) : null;
-
-    const control = leaf
-      ? `<button class="checkbox" data-action="toggle-node" data-quest="${questId}" data-id="${node.id}" aria-label="Abhaken">${ICONS.check}</button>`
-      : `<span class="branch-mark${done ? ' full' : ''}">${c.done}/${c.total}</span>`;
-
-    return `<li class="node${done ? ' done' : ''}${node.open ? ' open' : ''}">
-      <div class="node-row">
-        <button class="chev" data-action="toggle-open" data-quest="${questId}" data-id="${node.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
-        ${control}
-        ${node.priority !== 'mittel' ? dotHtml(p) : ''}
-        <span class="row-text editable" data-edit="node-text" data-quest="${questId}" data-id="${node.id}">${esc(node.text)}</span>
-        ${du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : ''}
-        ${leaf && node.doneAt ? `<span class="row-time">${timeHM(node.doneAt)}</span>` : ''}
-        <button class="del" data-action="del-node" data-quest="${questId}" data-id="${node.id}" aria-label="Löschen">${ICONS.x}</button>
-      </div>
-      ${node.open ? `<ul class="subtree">
-        <li class="meta-row">
-          <button class="chip prio-btn" data-action="cycle-prio-node" data-quest="${questId}" data-node="${node.id}">${dotHtml(p)}${p.label}</button>
-          <label class="date-field">Termin
-            <input type="date" data-field="node-deadline" data-quest="${questId}" data-node="${node.id}" value="${node.deadline || ''}">
-          </label>
-        </li>
-        ${sortedSteps(node.steps).map(k => renderNode(k, questId)).join('')}
-        <li class="add-sub">
-          <form class="add-row thin dated" data-action="add-sub" data-quest="${questId}" data-parent="${node.id}">
-            <input type="text" placeholder="Unterschritt …" autocomplete="off" enterkeyhint="done">
-            <input type="date" class="add-date" aria-label="Termin (optional)">
-            <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
-          </form>
-        </li>
-      </ul>` : ''}
-    </li>`;
-  }
+  /* --- Quest-Liste (Spalte 1) --- */
 
   function timeRow(q) {
     if (!q.deadline) return '';
     const start = q.start || q.createdAt;
-    const total = dayDiff(start, q.deadline);
-    const gone = dayDiff(start, todayStr());
+    const total = dayDiff(start, q.deadline), gone = dayDiff(start, todayStr());
     const pct = total <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(gone / total * 100)));
     const over = daysUntil(q.deadline) < 0;
-    return `<div class="time-row">
-      <span>${fmtShort(start)}</span>
-      <div class="track${over ? ' over' : ''}">
-        <div class="fill time-fill" style="width:${pct}%"></div>
-        <div class="mark" style="left:${pct}%"></div>
-      </div>
-      <span>${fmtShort(q.deadline)}</span>
-    </div>`;
+    return `<div class="time-row"><span>${fmtShort(start)}</span><div class="track${over ? ' over' : ''}"><div class="fill time-fill" style="width:${pct}%"></div><div class="mark" style="left:${pct}%"></div></div><span>${fmtShort(q.deadline)}</span></div>`;
   }
 
-  /* Kurzinfos + Steuerung unter dem hervorgehobenen Questnamen (Spalte 1). */
   function renderQuestMeta(q) {
     const laufend = q.type === 'laufend';
     const p = prioOf(q.priority);
     const { done, total } = questLeaves(q);
     const pct = questPct(q);
-    const hasSteps = total > 0;
-
     return `<div class="qmeta">
       <div class="meta-row">
-        <label class="sel-field">Bereich
-          <select data-sel="section" data-id="${q.id}">${sectionOptions(q.section)}</select>
-        </label>
-        <label class="sel-field">Typ
-          <select data-sel="type" data-id="${q.id}">${typeOptions(q.type)}</select>
-        </label>
+        <label class="sel-field">Bereich<select data-sel="section" data-id="${q.id}">${sectionOptions(q.section)}</select></label>
+        <label class="sel-field">Typ<select data-sel="type" data-id="${q.id}">${typeOptions(q.type)}</select></label>
         ${laufend ? '' : `<button class="chip prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>`}
       </div>
       ${laufend ? '' : `<div class="meta-row">
-        <label class="date-field">Start
-          <input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}">
-        </label>
-        <label class="date-field">Ende
-          <input type="date" data-field="deadline" data-id="${q.id}" value="${q.deadline || ''}">
-        </label>
+        <label class="date-field">Start<input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}"></label>
+        <label class="date-field">Ende<input type="date" data-field="deadline" data-id="${q.id}" value="${q.deadline || ''}"></label>
       </div>`}
-      ${hasSteps ? `<div class="progress-row">
-        <span>${done}/${total}</span>
-        <div class="track"><div class="fill" style="width:${pct}%"></div></div>
-        <span class="pct">${pct}%</span>
-      </div>` : ''}
+      ${total ? `<div class="progress-row"><span>${done}/${total}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>` : ''}
       ${laufend ? '' : timeRow(q)}
     </div>`;
   }
 
-  /* Quest-Zeile in der Bereichsliste (Spalte 1). */
   function renderQuestRow(q, active) {
     const isActive = active && q.id === active.id;
+    const isFocus = q.id === state.focusQuestId;
     const laufend = q.type === 'laufend';
     const p = prioOf(q.priority);
     const pct = questPct(q);
@@ -458,17 +307,14 @@
     const du = eff ? daysUntil(eff) : null;
     const hasSteps = questLeaves(q).total > 0;
     const dot = laufend ? 'var(--flow)' : p.color;
-
-    const tail = laufend
-      ? '<span class="flow-badge">laufend</span>'
-      : (du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
-
+    const tail = laufend ? '<span class="flow-badge">laufend</span>' : (du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
     return `<div class="qwrap">
-      <div class="qrow${isActive ? ' active' : ''}${q.done ? ' done' : ''}" data-action="open-quest" data-id="${q.id}">
+      <div class="qrow${isActive ? ' active' : ''}${isFocus ? ' focus' : ''}${q.done ? ' done' : ''}" data-action="open-quest" data-id="${q.id}">
         ${!hasSteps && !laufend
           ? `<button class="checkbox" data-action="toggle-quest" data-id="${q.id}" aria-label="Quest abhaken">${ICONS.check}</button>`
           : `<span class="qdot" style="background:${dot}"></span>`}
         <span class="qname${isActive ? ' editable' : ''}"${isActive ? ` data-edit="quest-title" data-id="${q.id}"` : ''}>${esc(q.title)}</span>
+        ${isFocus ? '<span class="focus-tag">Fokus</span>' : ''}
         <span class="qpct">${pct}%</span>
         ${tail}
         <button class="del" data-action="del-quest" data-id="${q.id}" aria-label="Quest löschen">${ICONS.x}</button>
@@ -481,277 +327,295 @@
     const isActiveHere = active && quests.some(q => q.id === active.id);
     const frist = quests.filter(q => q.type !== 'laufend').sort(byQuestUrgency);
     const laufend = quests.filter(q => q.type === 'laufend');
-
     let body;
     if (frist.length && laufend.length) {
-      body = `<div class="group-label">Mit Deadline</div>${frist.map(q => renderQuestRow(q, active)).join('')}
-        <div class="group-label">Laufend</div>${laufend.map(q => renderQuestRow(q, active)).join('')}`;
+      body = `<div class="group-label">Mit Deadline</div>${frist.map(q => renderQuestRow(q, active)).join('')}<div class="group-label">Laufend</div>${laufend.map(q => renderQuestRow(q, active)).join('')}`;
     } else {
       const all = frist.concat(laufend);
-      body = all.length ? all.map(q => renderQuestRow(q, active)).join('') : '<div class="empty">— keine Quests —</div>';
+      body = all.length ? all.map(q => renderQuestRow(q, active)).join('') : '';
     }
-
     return `<section class="board-section${isActiveHere ? ' has-active' : ''}">
       <div class="section-title">${esc(sec.label)}</div>
       ${body}
-      <form class="add-row add-block" data-action="add-quest" data-section="${sec.key}">
-        <input type="text" placeholder="Neue Quest …" autocomplete="off" enterkeyhint="done">
-        <select class="add-type" aria-label="Typ">${typeOptions('frist')}</select>
-        <button type="submit" aria-label="Quest anlegen">${ICONS.plus}</button>
-      </form>
+      ${addMini('add-quest', 'Neue Quest', ` data-section="${sec.key}"`)}
     </section>`;
   }
 
+  /* --- Schritte (Spalte 2) --- */
+
+  function renderSub(sub, questId, stepId) {
+    const hasKids = sub.subs.length > 0;
+    const done = subDone(sub);
+    const { done: sd, total: st } = subLeaves(sub);
+    const control = hasKids
+      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
+    return `<li class="node sub${done ? ' done' : ''}${sub.open ? ' open' : ''}">
+      <div class="node-row">
+        <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
+        ${control}
+        <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
+        <button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button>
+      </div>
+      ${sub.open ? `<ul class="subtree">
+        ${sub.subs.map(k => renderSub(k, questId, stepId)).join('')}
+        <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${stepId}" data-parent="${sub.id}"`)}</li>
+      </ul>` : ''}
+    </li>`;
+  }
+
+  function renderStep(s, questId, nextId) {
+    const hasSubs = stepHasSubs(s);
+    const done = stepDone(s);
+    const sel = s.id === activeStepId;
+    const { done: sd, total: st } = stepLeaves(s);
+    const eff = stepEffDeadline(s);
+    const du = eff ? daysUntil(eff) : null;
+    const control = hasSubs
+      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Abhaken">${ICONS.check}</button>`;
+    const tail = s.type === 'laufend' ? '<span class="flow-badge">laufend</span>' : (du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
+    return `<li class="node step${done ? ' done' : ''}${sel ? ' sel' : ''}${s.id === nextId ? ' next' : ''}">
+      <div class="node-row" data-action="select-step" data-quest="${questId}" data-id="${s.id}">
+        ${control}
+        ${s.id === nextId ? '<span class="next-mark">→</span>' : ''}
+        <span class="row-text${sel ? ' editable' : ''}"${sel ? ` data-edit="step-text" data-quest="${questId}" data-id="${s.id}"` : ''}>${esc(s.text)}</span>
+        ${tail}
+        <button class="del" data-action="del-step" data-quest="${questId}" data-id="${s.id}" aria-label="Löschen">${ICONS.x}</button>
+      </div>
+      ${sel ? `<ul class="subtree">
+        ${s.subs.map(sub => renderSub(sub, questId, s.id)).join('')}
+        <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${s.id}"`)}</li>
+      </ul>` : ''}
+    </li>`;
+  }
+
   function renderStepsCol(q) {
+    const active = q.steps.filter(s => !stepDone(s));
+    const done = q.steps.filter(s => stepDone(s));
+    const list = stepTab === 'erledigt' ? done.slice().sort(byDoneAt) : active.slice().sort(byStepUrgency);
+    const body = list.length ? list.map(s => renderStep(s, q.id, q.nextStepId)).join('')
+      : `<div class="empty">${stepTab === 'erledigt' ? '— nichts erledigt —' : '— keine Schritte —'}</div>`;
     return `<div class="col-steps">
-      <div class="col-head">Schritte</div>
-      <ul class="tree">${sortedSteps(q.steps).map(n => renderNode(n, q.id)).join('')}</ul>
-      <form class="add-row dated" data-action="add-step" data-quest="${q.id}">
-        <input type="text" placeholder="Neuer Schritt …" autocomplete="off" enterkeyhint="done">
-        <input type="date" class="add-date" aria-label="Termin (optional)">
-        <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
-      </form>
+      <div class="step-tabs">
+        <button data-action="step-tab" data-tab="aktuell" class="${stepTab === 'aktuell' ? 'active' : ''}">Schritte<span class="seg-count">${active.length}</span></button>
+        <button data-action="step-tab" data-tab="erledigt" class="${stepTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${done.length}</span></button>
+      </div>
+      <ul class="tree">${body}</ul>
+      ${stepTab === 'aktuell' ? addMini('add-step', 'Neuer Schritt', ` data-quest="${q.id}"`) : ''}
     </div>`;
   }
 
-  function renderNotesCol(q) {
+  /* --- Kontext (Spalte 3) --- */
+
+  function renderMs(m, questId) {
+    return `<li class="ms-row">
+      <span class="cdot" style="background:#C9A24B"></span>
+      <span class="row-text editable" data-edit="ms-text" data-quest="${questId}" data-id="${m.id}">${esc(m.text)}</span>
+      <input type="date" class="ms-date" data-field="ms-deadline" data-quest="${questId}" data-id="${m.id}" value="${m.deadline || ''}" aria-label="Deadline">
+      <button class="del" data-action="del-ms" data-quest="${questId}" data-id="${m.id}" aria-label="Löschen">${ICONS.x}</button>
+    </li>`;
+  }
+
+  function renderContextCol(q) {
+    const step = activeStepId ? findStep(q, activeStepId) : null;
+    if (step) {
+      const laufend = step.type === 'laufend';
+      const isNext = q.nextStepId === step.id;
+      return `<div class="col-notes">
+        <div class="col-head">Kontext · Schritt<button class="ctx-up" data-action="deselect-step">↑ Quest</button></div>
+        <div class="ctx-title">${esc(step.text)}</div>
+        <div class="meta-row">
+          <label class="sel-field">Typ<select data-sel="step-type" data-quest="${q.id}" data-id="${step.id}">${typeOptions(step.type)}</select></label>
+          ${laufend ? '' : `<label class="date-field">Termin<input type="date" data-field="step-deadline" data-quest="${q.id}" data-id="${step.id}" value="${step.deadline || ''}"></label>`}
+        </div>
+        <button class="ctx-toggle${isNext ? ' on' : ''}" data-action="toggle-next" data-quest="${q.id}" data-id="${step.id}">${isNext ? '✓ Nächster Schritt' : 'Als nächsten Schritt'}</button>
+        <div class="ctx-label">Notizen</div>
+        <textarea class="notes" data-step-notes data-quest="${q.id}" data-id="${step.id}" placeholder="Notizen zum Schritt …">${esc(step.notes)}</textarea>
+      </div>`;
+    }
+    const isFocus = q.id === state.focusQuestId;
+    const next = q.nextStepId ? findStep(q, q.nextStepId) : null;
     return `<div class="col-notes">
-      <div class="col-head">Notizen</div>
-      <textarea class="notes" data-notes data-id="${q.id}" placeholder="Notizen …">${esc(q.notes)}</textarea>
+      <div class="col-head">Kontext · Quest</div>
+      <button class="ctx-toggle${isFocus ? ' on' : ''}" data-action="toggle-focus" data-id="${q.id}">${isFocus ? '✓ Fokus aktiv' : 'Als Fokus setzen'}</button>
+      <div class="ctx-block">
+        <div class="ctx-label">Nächster Schritt</div>
+        ${next ? `<button class="next-link" data-action="select-step" data-quest="${q.id}" data-id="${next.id}">→ ${esc(next.text)}</button>` : '<span class="ctx-empty">— in der Schritte-Spalte wählen —</span>'}
+      </div>
+      <div class="ctx-block">
+        <div class="ctx-label">Milestones</div>
+        <ul class="ms-list">${q.milestones.map(m => renderMs(m, q.id)).join('')}</ul>
+        ${addMini('add-ms', 'Milestone', ` data-quest="${q.id}"`)}
+      </div>
+      <div class="ctx-block">
+        <div class="ctx-label">Notizen</div>
+        <textarea class="notes" data-notes data-id="${q.id}" placeholder="Notizen zur Quest …">${esc(q.notes)}</textarea>
+      </div>
     </div>`;
+  }
+
+  /* --- Archiv (Erledigt-Reiter) --- */
+
+  function renderArchSub(sub) {
+    return `<li class="arch-sub${subDone(sub) ? ' done' : ''}">${esc(sub.text)}${sub.subs.length ? `<ul>${sub.subs.map(renderArchSub).join('')}</ul>` : ''}</li>`;
+  }
+  function renderArchQuest(q) {
+    const info = q.deadline ? `Deadline ${fmtShort(q.deadline)}` : (q.type === 'laufend' ? 'laufend' : '');
+    return `<div class="arch-quest">
+      <div class="arch-head"><span class="arch-title">${esc(q.title)}</span><span class="arch-info">${info} · 100%</span>
+        <button class="arch-reopen" data-action="reactivate-quest" data-id="${q.id}">reaktivieren</button></div>
+      ${q.steps.length ? `<ul class="arch-steps">${q.steps.map(s => `<li>${esc(s.text)}${s.subs.length ? `<ul>${s.subs.map(renderArchSub).join('')}</ul>` : ''}</li>`).join('')}</ul>` : ''}
+    </div>`;
+  }
+  function renderArchive() {
+    const done = state.quests.filter(q => q.done);
+    let html = '';
+    for (const cat of [{ key: 'main', label: 'Main' }, { key: 'side', label: 'Side' }]) {
+      const catQs = done.filter(q => q.category === cat.key);
+      if (!catQs.length) continue;
+      html += `<div class="arch-cat">${cat.label}</div>`;
+      for (const sec of SECTIONS) {
+        const qs = catQs.filter(q => q.section === sec.key);
+        if (!qs.length) continue;
+        html += `<div class="arch-sec">${esc(sec.label)}</div>${qs.map(renderArchQuest).join('')}`;
+      }
+    }
+    return `<div class="archive">${html || '<div class="empty">— noch nichts erledigt —</div>'}</div>`;
   }
 
   function renderQuests() {
     const counts = {
-      main: state.quests.filter(q => q.category === 'main').length,
-      side: state.quests.filter(q => q.category === 'side').length,
+      main: state.quests.filter(q => q.category === 'main' && !q.done).length,
+      side: state.quests.filter(q => q.category === 'side' && !q.done).length,
+      erledigt: state.quests.filter(q => q.done).length,
     };
-    const tabs = QUEST_CATS.map(c =>
-      `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">
-        ${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
+    const tabs = QUEST_TABS.map(c => `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
+    const head = `<div class="board-title">Questlog</div><div class="seg">${tabs}</div>`;
 
-    const inTab = state.quests.filter(q => q.category === questCat);
+    if (questCat === 'erledigt') return head + renderArchive();
+
+    const inTab = state.quests.filter(q => q.category === questCat && !q.done);
     const active = activeQuestId ? inTab.find(q => q.id === activeQuestId) : null;
-    const sections = SECTIONS
-      .map(sec => renderSection(sec, inTab.filter(q => q.section === sec.key), active))
-      .join('');
-
-    return `<div class="board-title">Questlog</div>
-      <div class="seg">${tabs}</div>
-      <div class="board${active ? ' detail has-active' : ''}">
-        <div class="col-list">
-          ${active ? '<button class="back" data-action="close-quest">← Übersicht</button>' : ''}
-          ${sections}
-        </div>
-        ${active ? renderStepsCol(active) + renderNotesCol(active) : ''}
-      </div>`;
+    const sections = SECTIONS.map(sec => renderSection(sec, inTab.filter(q => q.section === sec.key), active)).join('');
+    return head + `<div class="board${active ? ' detail has-active' : ''}">
+      <div class="col-list">${active ? '<button class="back" data-action="close-quest">← Übersicht</button>' : ''}${sections}</div>
+      ${active ? renderStepsCol(active) + renderContextCol(active) : ''}
+    </div>`;
   }
 
-  function renderLists() {
-    const blocks = state.lists.map(l => {
-      const doneCount = l.items.filter(i => i.done).length;
-      return `<section class="block${l.open ? ' open' : ''}">
-        <header class="block-head list-head" data-action="toggle-list" data-id="${l.id}">
-          <span class="chev">${ICONS.chevron}</span>
-          <h2 class="editable" data-edit="list-name" data-id="${l.id}">${esc(l.name)}</h2>
-          <span class="count">${doneCount}/${l.items.length}</span>
-          <button class="del" data-action="del-list" data-id="${l.id}" aria-label="Liste löschen">${ICONS.x}</button>
-        </header>
-        ${l.open ? `
-          ${l.items.length
-            ? `<ul class="items">${l.items.map(i => `<li class="row${i.done ? ' done' : ''}">
-                <button class="checkbox" data-action="toggle-item" data-list="${l.id}" data-id="${i.id}" aria-label="Abhaken">${ICONS.check}</button>
-                <span class="row-text editable" data-edit="item-text" data-list="${l.id}" data-id="${i.id}">${esc(i.text)}</span>
-                <button class="del" data-action="del-item" data-list="${l.id}" data-id="${i.id}" aria-label="Löschen">${ICONS.x}</button>
-              </li>`).join('')}</ul>`
-            : '<div class="empty">— leer —</div>'}
-          <form class="add-row" data-action="add-item" data-list="${l.id}">
-            <input type="text" placeholder="Neuer Eintrag …" autocomplete="off" enterkeyhint="done">
-            <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
-          </form>` : ''}
-      </section>`;
-    }).join('');
+  /* --- Kalender --- */
 
-    return `${blocks}
-      <form class="add-row add-block" data-action="add-list">
-        <input type="text" placeholder="Neue Liste …" autocomplete="off" enterkeyhint="done">
-        <button type="submit" aria-label="Liste anlegen">${ICONS.plus}</button>
-      </form>`;
-  }
-
-  const DOT = { quest: 'var(--red)', branch: 'var(--muted)', step: 'var(--blue)', agenda: 'var(--flow)' };
+  const DOT = { quest: 'var(--red)', branch: 'var(--muted)', step: 'var(--blue)', agenda: 'var(--flow)', milestone: '#C9A24B' };
 
   function renderMonth(byDate) {
     const c = parseDate(calCursor);
-    const year = c.getFullYear(), month = c.getMonth();
-    const first = new Date(year, month, 1);
+    const first = new Date(c.getFullYear(), c.getMonth(), 1);
     const gridStart = addDays(dateStr(first), -wdIndexMon(first));
-
     const weekdays = WD_SHORT.map(w => `<div class="cal-weekday">${w}</div>`).join('');
     let cells = '';
     for (let i = 0; i < 42; i++) {
       const ds = addDays(gridStart, i);
       const d = parseDate(ds);
-      const inMonth = d.getMonth() === month;
-      const isToday = ds === todayStr();
       const items = byDate[ds] || [];
-      const chips = items.slice(0, 3).map(e =>
-        `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
+      const chips = items.slice(0, 3).map(e => `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
       const more = items.length > 3 ? `<div class="cal-more">+${items.length - 3} mehr</div>` : '';
-      cells += `<div class="cal-cell${inMonth ? '' : ' other'}${isToday ? ' today' : ''}" data-action="cal-day" data-date="${ds}">
-        <span class="cal-daynum">${d.getDate()}</span>${chips}${more}</div>`;
+      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span>${chips}${more}</div>`;
     }
     return `<div class="cal-grid">${weekdays}${cells}</div>`;
   }
 
   function calEntryRow(e) {
-    if (e.checkable && e.kind === 'step') {
-      return `<li class="row${e.done ? ' done' : ''}">
-        <button class="checkbox" data-action="toggle-node" data-quest="${e.questId}" data-id="${e.nodeId}" aria-label="Abhaken">${ICONS.check}</button>
-        <span class="row-text">${esc(e.text)}</span>
-        <button class="cal-ctx" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.questTitle)}</button>
-      </li>`;
-    }
-    if (e.kind === 'agenda') {
-      return `<li class="row${e.done ? ' done' : ''}">
-        <button class="checkbox" data-action="toggle-agenda" data-id="${e.id}" aria-label="Abhaken">${ICONS.check}</button>
-        <span class="row-text">${esc(e.text)}</span>
-        <button class="del" data-action="del-agenda" data-id="${e.id}" aria-label="Löschen">${ICONS.x}</button>
-      </li>`;
-    }
-    // Markierung (Quest-Frist oder Ast mit Termin), nicht abhakbar
-    return `<li class="row marker${e.done ? ' done' : ''}">
-      <span class="cdot" style="background:${DOT[e.kind]}"></span>
-      <button class="marker-link" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.text)}${e.kind === 'branch' ? ` · ${esc(e.questTitle)}` : ''}</button>
-      <span class="marker-tag">${e.kind === 'quest' ? 'Quest-Frist' : 'Frist'}</span>
-    </li>`;
+    if (e.kind === 'step') return `<li class="row${e.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-step" data-quest="${e.questId}" data-id="${e.stepId}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(e.text)}</span><button class="cal-ctx" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.questTitle)}</button></li>`;
+    if (e.kind === 'agenda') return `<li class="row${e.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${e.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(e.text)}</span><button class="del" data-action="del-agenda" data-id="${e.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
+    const tag = e.kind === 'quest' ? 'Quest-Frist' : e.kind === 'milestone' ? 'Milestone' : 'Frist';
+    return `<li class="row marker"><span class="cdot" style="background:${DOT[e.kind]}"></span><button class="marker-link" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.text)}${e.kind !== 'quest' ? ` · ${esc(e.questTitle)}` : ''}</button><span class="marker-tag">${tag}</span></li>`;
   }
 
   function renderDay(byDate) {
-    const items = (byDate[calCursor] || []);
+    const items = byDate[calCursor] || [];
     const markers = items.filter(e => !e.checkable);
     const steps = items.filter(e => e.kind === 'step');
     const tasks = items.filter(e => e.kind === 'agenda');
     const d = parseDate(calCursor);
-
-    const group = (label, arr) => arr.length
-      ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
-
-    const body = (markers.length || steps.length || tasks.length)
-      ? group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks)
-      : '<div class="empty">— nichts an diesem Tag —</div>';
-
-    return `<div class="day-view">
-      <div class="day-head">
-        <span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span>
-      </div>
-      ${body}
-      <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}">
-        <input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done">
-        <button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button>
-      </form>
-    </div>`;
+    const group = (label, arr) => arr.length ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
+    const body = (markers.length || steps.length || tasks.length) ? group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
+    return `<div class="day-view"><div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>${body}
+      <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}"><input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form></div>`;
   }
 
   function renderCalendar() {
     const byDate = entriesByDate();
     const cd = parseDate(calCursor);
-    const label = `${MONTHS[cd.getMonth()]} ${cd.getFullYear()}`;
-
-    const views = [['monat', 'Monat'], ['tag', 'Tag']].map(([k, l]) =>
-      `<button data-action="cal-view" data-view="${k}" class="${calView === k ? 'active' : ''}">${l}</button>`).join('');
-
-    return `<div class="cal-toolbar">
-        <div class="cal-views">${views}</div>
-        <span class="cal-period">${label}</span>
-        <div class="cal-nav">
-          <button data-action="cal-prev" aria-label="Zurück">‹</button>
-          <button class="cal-today" data-action="cal-today">Heute</button>
-          <button data-action="cal-next" aria-label="Vor">›</button>
-        </div>
-      </div>
+    const views = [['monat', 'Monat'], ['tag', 'Tag']].map(([k, l]) => `<button data-action="cal-view" data-view="${k}" class="${calView === k ? 'active' : ''}">${l}</button>`).join('');
+    return `<div class="cal-toolbar"><div class="cal-views">${views}</div><span class="cal-period">${MONTHS[cd.getMonth()]} ${cd.getFullYear()}</span>
+      <div class="cal-nav"><button data-action="cal-prev" aria-label="Zurück">‹</button><button class="cal-today" data-action="cal-today">Heute</button><button data-action="cal-next" aria-label="Vor">›</button></div></div>
       ${calView === 'monat' ? renderMonth(byDate) : renderDay(byDate)}`;
+  }
+
+  /* --- Listen --- */
+
+  function renderLists() {
+    const blocks = state.lists.map(l => {
+      const doneCount = l.items.filter(i => i.done).length;
+      return `<section class="block${l.open ? ' open' : ''}">
+        <header class="block-head list-head" data-action="toggle-list" data-id="${l.id}"><span class="chev">${ICONS.chevron}</span><h2 class="editable" data-edit="list-name" data-id="${l.id}">${esc(l.name)}</h2><span class="count">${doneCount}/${l.items.length}</span><button class="del" data-action="del-list" data-id="${l.id}" aria-label="Liste löschen">${ICONS.x}</button></header>
+        ${l.open ? `${l.items.length ? `<ul class="items">${l.items.map(i => `<li class="row${i.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-item" data-list="${l.id}" data-id="${i.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text editable" data-edit="item-text" data-list="${l.id}" data-id="${i.id}">${esc(i.text)}</span><button class="del" data-action="del-item" data-list="${l.id}" data-id="${i.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>` : '<div class="empty">— leer —</div>'}
+          <form class="add-row" data-action="add-item" data-list="${l.id}"><input type="text" placeholder="Neuer Eintrag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
+      </section>`;
+    }).join('');
+    return `${blocks}<form class="add-row add-block" data-action="add-list"><input type="text" placeholder="Neue Liste …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Liste anlegen">${ICONS.plus}</button></form>`;
   }
 
   function render() {
     if (editing) return;
-    for (const btn of tabbar.querySelectorAll('.tab')) {
-      btn.classList.toggle('active', btn.dataset.tab === activeTab);
-    }
-    view.innerHTML = activeTab === 'calendar' ? renderCalendar()
-      : activeTab === 'quests' ? renderQuests()
-      : renderLists();
-
-    if (refocusSel) {
-      const el = view.querySelector(refocusSel);
-      if (el) el.focus();
-      refocusSel = null;
-    }
+    for (const btn of tabbar.querySelectorAll('.tab')) btn.classList.toggle('active', btn.dataset.tab === activeTab);
+    view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : renderLists();
+    if (refocusSel) { const el = view.querySelector(refocusSel); if (el) el.focus(); refocusSel = null; }
   }
 
-  /* ---------- Inline-Umbenennen (Doppelklick) ---------- */
+  /* ---------- Inline-Umbenennen ---------- */
 
   let editing = null;
-
   function startEdit(el) {
     if (editing) return;
     editing = el;
-    el.setAttribute('contenteditable', 'plaintext-only');
-    el.classList.add('editing');
-    el.focus();
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    const sel = getSelection();
-    sel.removeAllRanges();
-    sel.addRange(r);
+    el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('editing'); el.focus();
+    const r = document.createRange(); r.selectNodeContents(el);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
   }
-
   function applyEdit(ds, val) {
     switch (ds.edit) {
       case 'quest-title': { const q = state.quests.find(q => q.id === ds.id); if (q) q.title = val; break; }
-      case 'node-text': { const q = state.quests.find(q => q.id === ds.quest); const n = q && findNode(q.steps, ds.id); if (n) n.text = val; break; }
+      case 'step-text': { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.id); if (s) s.text = val; break; }
+      case 'sub-text': { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.id); if (sub) sub.text = val; break; }
+      case 'ms-text': { const q = state.quests.find(q => q.id === ds.quest); const m = q && q.milestones.find(m => m.id === ds.id); if (m) m.text = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
   }
-
   function commitEdit(cancel) {
     if (!editing) return;
-    const el = editing;
-    editing = null;
-    el.removeAttribute('contenteditable');
-    el.classList.remove('editing');
+    const el = editing; editing = null;
+    el.removeAttribute('contenteditable'); el.classList.remove('editing');
     const val = el.textContent.trim();
     if (!cancel && val) applyEdit({ ...el.dataset }, val);
-    save();
-    render();
+    save(); render();
   }
-
-  view.addEventListener('dblclick', e => {
-    const el = e.target.closest('.editable');
-    if (el) startEdit(el);
-  });
-  view.addEventListener('keydown', e => {
-    if (!editing) return;
-    if (e.key === 'Enter') { e.preventDefault(); commitEdit(false); }
-    else if (e.key === 'Escape') { e.preventDefault(); commitEdit(true); }
-  });
-  view.addEventListener('focusout', e => {
-    if (editing && e.target === editing) commitEdit(false);
-  });
-
-  /* Escape schließt die Detailansicht. */
+  view.addEventListener('dblclick', e => { const el = e.target.closest('.editable'); if (el) startEdit(el); });
+  view.addEventListener('keydown', e => { if (!editing) return; if (e.key === 'Enter') { e.preventDefault(); commitEdit(false); } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(true); } });
+  view.addEventListener('focusout', e => { if (editing && e.target === editing) commitEdit(false); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !editing && activeQuestId) { activeQuestId = null; render(); }
+    if (e.key === 'Escape' && !editing) { if (activeStepId) { activeStepId = null; render(); } else if (activeQuestId) { activeQuestId = null; render(); } }
   });
 
-  /* ---------- Notizen (ohne Re-Render, damit der Fokus bleibt) ---------- */
+  /* ---------- Notizen (ohne Re-Render) ---------- */
 
   view.addEventListener('input', e => {
-    const ta = e.target.closest('textarea[data-notes]');
+    const ta = e.target.closest('textarea[data-notes], textarea[data-step-notes]');
     if (!ta) return;
-    const q = state.quests.find(q => q.id === ta.dataset.id);
-    if (q) { q.notes = ta.value; save(); }
+    if (ta.hasAttribute('data-step-notes')) { const q = state.quests.find(q => q.id === ta.dataset.quest); const s = q && findStep(q, ta.dataset.id); if (s) { s.notes = ta.value; save(); } }
+    else { const q = state.quests.find(q => q.id === ta.dataset.id); if (q) { q.notes = ta.value; save(); } }
   });
 
   /* ---------- Klick-Aktionen ---------- */
@@ -760,175 +624,71 @@
     const el = e.target.closest('[data-action]');
     if (!el || !view.contains(el) || el.tagName === 'FORM') return;
     if (el.closest('.editable')) return;
-    const { action, id, list: listId, quest: questId } = el.dataset;
+    const { action, id, list: listId, quest: questId, step: stepId } = el.dataset;
 
     switch (action) {
-      case 'quest-cat':
-        questCat = el.dataset.cat;
-        activeQuestId = null;
-        break;
+      case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; break;
 
-      case 'cal-view':
-        calView = el.dataset.view === 'tag' ? 'tag' : 'monat';
-        break;
-      case 'cal-prev':
-        calCursor = calView === 'monat' ? addMonths(calCursor, -1) : addDays(calCursor, -1);
-        break;
-      case 'cal-next':
-        calCursor = calView === 'monat' ? addMonths(calCursor, 1) : addDays(calCursor, 1);
-        break;
-      case 'cal-today':
-        calCursor = todayStr();
-        break;
-      case 'cal-day':
-        calCursor = el.dataset.date;
-        calView = 'tag';
-        break;
-      case 'open-quest-from-cal': {
-        const q = state.quests.find(q => q.id === id);
-        if (!q) return;
-        activeTab = 'quests';
-        questCat = q.category;
-        activeQuestId = q.id;
-        break;
-      }
-      case 'toggle-agenda': {
-        const a = state.agenda.find(a => a.id === id);
-        if (!a) return;
-        a.done = !a.done;
-        a.doneAt = a.done ? nowISO() : null;
-        break;
-      }
-      case 'del-agenda':
-        state.agenda = state.agenda.filter(a => a.id !== id);
-        break;
+      case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; stepTab = 'aktuell'; } else return; break;
+      case 'close-quest': activeQuestId = null; activeStepId = null; break;
 
-      case 'open-quest':
-        if (id !== activeQuestId) activeQuestId = id; // aktive Quest bleibt offen (Schließen via Zurück/Escape)
-        else return;
-        break;
-      case 'close-quest':
-        activeQuestId = null;
-        break;
+      case 'toggle-quest': { const q = state.quests.find(q => q.id === id); if (!q || q.steps.length) return; q.done = !q.done; q.doneAt = q.done ? nowISO() : null; if (q.done) { touchStreak(q.streak); if (id === activeQuestId) activeQuestId = null; } break; }
+      case 'del-quest': { const q = state.quests.find(q => q.id === id); if (!q || !confirm(`Quest „${q.title}" löschen?`)) return; state.quests = state.quests.filter(x => x.id !== id); if (id === state.focusQuestId) state.focusQuestId = null; if (id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
+      case 'reactivate-quest': { const q = state.quests.find(q => q.id === id); if (!q) return; if (q.steps.length) reopenFirstLeaf(q); else { q.done = false; q.doneAt = null; } syncQuestDone(q); break; }
+      case 'cycle-prio': { const q = state.quests.find(q => q.id === id); if (!q) return; const i = PRIOS.findIndex(p => p.key === q.priority); q.priority = PRIOS[(i + 1) % PRIOS.length].key; break; }
+      case 'toggle-focus': state.focusQuestId = state.focusQuestId === id ? null : id; break;
 
-      case 'toggle-quest': {
-        const q = state.quests.find(q => q.id === id);
-        if (!q || q.steps.length) return;
-        q.done = !q.done;
-        q.doneAt = q.done ? nowISO() : null;
-        if (q.done) touchStreak(q.streak);
-        break;
-      }
-      case 'del-quest': {
-        const q = state.quests.find(q => q.id === id);
-        if (!q || !confirm(`Quest „${q.title}" löschen?`)) return;
-        state.quests = state.quests.filter(x => x.id !== id);
-        if (id === activeQuestId) activeQuestId = null;
-        break;
-      }
-      case 'cycle-prio': {
-        const q = state.quests.find(q => q.id === id);
-        if (!q) return;
-        const i = PRIOS.findIndex(p => p.key === q.priority);
-        q.priority = PRIOS[(i + 1) % PRIOS.length].key;
-        break;
-      }
-      case 'cycle-prio-node': {
-        const q = state.quests.find(q => q.id === el.dataset.quest);
-        const n = q && findNode(q.steps, el.dataset.node);
-        if (!n) return;
-        const i = PRIOS.findIndex(p => p.key === n.priority);
-        n.priority = PRIOS[(i + 1) % PRIOS.length].key;
-        break;
-      }
+      case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
+      case 'select-step': if (id !== activeStepId) activeStepId = id; else return; break;
+      case 'deselect-step': activeStepId = null; break;
+      case 'toggle-next': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.nextStepId = q.nextStepId === id ? null : id; break; }
 
-      case 'toggle-open': {
-        const q = state.quests.find(q => q.id === questId);
-        const n = q && findNode(q.steps, id);
-        if (n) n.open = !n.open;
-        break;
-      }
-      case 'toggle-node': {
-        const q = state.quests.find(q => q.id === questId);
-        const n = q && findNode(q.steps, id);
-        if (!n || !isLeaf(n)) return;
-        n.done = !n.done;
-        n.doneAt = n.done ? nowISO() : null;
-        if (n.done) touchStreak(q.streak);
-        syncQuestDone(q);
-        break;
-      }
-      case 'del-node': {
-        const q = state.quests.find(q => q.id === questId);
-        if (!q) return;
-        removeNode(q.steps, id);
-        syncQuestDone(q);
-        break;
-      }
+      case 'toggle-step': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (!s || stepHasSubs(s)) return; s.done = !s.done; s.doneAt = s.done ? nowISO() : null; if (s.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
+      case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); if (id === activeStepId) activeStepId = null; if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
+      case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
+      case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
+      case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); syncQuestDone(q); break; }
 
-      case 'toggle-list': {
-        const l = state.lists.find(l => l.id === id);
-        if (l) l.open = !l.open;
-        break;
-      }
-      case 'del-list': {
-        const l = state.lists.find(l => l.id === id);
-        if (!l || !confirm(`Liste „${l.name}" löschen?`)) return;
-        state.lists = state.lists.filter(x => x.id !== id);
-        break;
-      }
-      case 'toggle-item': {
-        const l = state.lists.find(l => l.id === listId);
-        const i = l && l.items.find(i => i.id === id);
-        if (i) i.done = !i.done;
-        break;
-      }
-      case 'del-item': {
-        const l = state.lists.find(l => l.id === listId);
-        if (l) l.items = l.items.filter(i => i.id !== id);
-        break;
-      }
+      case 'del-ms': { const q = state.quests.find(q => q.id === questId); if (q) q.milestones = q.milestones.filter(m => m.id !== id); break; }
+
+      case 'cal-view': calView = el.dataset.view === 'tag' ? 'tag' : 'monat'; break;
+      case 'cal-prev': calCursor = calView === 'monat' ? addMonths(calCursor, -1) : addDays(calCursor, -1); break;
+      case 'cal-next': calCursor = calView === 'monat' ? addMonths(calCursor, 1) : addDays(calCursor, 1); break;
+      case 'cal-today': calCursor = todayStr(); break;
+      case 'cal-day': calCursor = el.dataset.date; calView = 'tag'; break;
+      case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; activeTab = 'quests'; questCat = q.done ? 'erledigt' : q.category; activeQuestId = q.done ? null : q.id; activeStepId = null; stepTab = 'aktuell'; break; }
+      case 'toggle-agenda': { const a = state.agenda.find(a => a.id === id); if (!a) return; a.done = !a.done; a.doneAt = a.done ? nowISO() : null; break; }
+      case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); break;
+
+      case 'toggle-list': { const l = state.lists.find(l => l.id === id); if (l) l.open = !l.open; break; }
+      case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
+      case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
+      case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
 
       default: return;
     }
-
-    save();
-    render();
+    save(); render();
   });
 
-  /* ---------- Änderungen an Feldern (Datum + Dropdowns) ---------- */
+  /* ---------- Feldänderungen ---------- */
 
   view.addEventListener('change', e => {
     const sel = e.target.closest('select[data-sel]');
     if (sel) {
-      const q = state.quests.find(q => q.id === sel.dataset.id);
-      if (q) {
-        if (sel.dataset.sel === 'section') q.section = sel.value;
-        else if (sel.dataset.sel === 'type') q.type = (sel.value === 'laufend' ? 'laufend' : 'frist');
-      }
-      save();
-      render();
-      return;
+      if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
+      else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; }
+      save(); render(); return;
     }
-
     const input = e.target.closest('input[type="date"][data-field]');
     if (!input) return;
-    const f = input.dataset.field;
-    const v = isDateStr(input.value) ? input.value : null;
-    if (f === 'start' || f === 'deadline') {
-      const q = state.quests.find(q => q.id === input.dataset.id);
-      if (!q) return;
-      if (f === 'start') q.start = v; else q.deadline = v;
-    } else if (f === 'node-deadline') {
-      const q = state.quests.find(q => q.id === input.dataset.quest);
-      const n = q && findNode(q.steps, input.dataset.node);
-      if (n) n.deadline = v;
-    }
-    save();
-    render();
+    const f = input.dataset.field, v = isDateStr(input.value) ? input.value : null;
+    if (f === 'start' || f === 'deadline') { const q = state.quests.find(q => q.id === input.dataset.id); if (!q) return; if (f === 'start') q.start = v; else q.deadline = v; }
+    else if (f === 'step-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const s = q && findStep(q, input.dataset.id); if (s) s.deadline = v; }
+    else if (f === 'ms-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const m = q && q.milestones.find(m => m.id === input.dataset.id); if (m) m.deadline = v; }
+    save(); render();
   });
 
-  /* ---------- Formulare (Anlegen) ---------- */
+  /* ---------- Formulare ---------- */
 
   view.addEventListener('submit', e => {
     const form = e.target.closest('form[data-action]');
@@ -941,101 +701,41 @@
     switch (form.dataset.action) {
       case 'add-quest': {
         const section = SECTIONS.some(s => s.key === form.dataset.section) ? form.dataset.section : 'studium';
-        const typeSel = form.querySelector('.add-type');
-        const type = typeSel && typeSel.value === 'laufend' ? 'laufend' : 'frist';
-        state.quests.push({
-          id: uid(), title: text, category: questCat, section, type, notes: '',
-          done: false, doneAt: null,
-          priority: 'mittel', createdAt: todayStr(), start: null, deadline: null,
-          steps: [], streak: freshStreak(), open: true,
-        });
-        refocusSel = `form[data-action="add-quest"][data-section="${section}"] input[type="text"]`;
+        state.quests.push({ id: uid(), title: text, category: questCat === 'erledigt' ? 'main' : questCat, section, type: 'frist', notes: '', done: false, doneAt: null, priority: 'mittel', createdAt: todayStr(), start: null, deadline: null, milestones: [], nextStepId: null, steps: [], streak: freshStreak() });
+        refocusSel = `form[data-action="add-quest"][data-section="${section}"] input`;
         break;
       }
-
-      case 'add-step': {
-        const q = state.quests.find(q => q.id === form.dataset.quest);
-        if (!q) return;
-        const node = newNode(text);
-        const di = form.querySelector('.add-date');
-        if (di && isDateStr(di.value)) node.deadline = di.value;
-        q.steps.push(node);
-        syncQuestDone(q);
-        refocusSel = `form[data-action="add-step"][data-quest="${q.id}"] input[type="text"]`;
-        break;
-      }
-
+      case 'add-step': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.steps.push(newStep(text)); syncQuestDone(q); refocusSel = `form[data-action="add-step"][data-quest="${q.id}"] input`; break; }
       case 'add-sub': {
         const q = state.quests.find(q => q.id === form.dataset.quest);
-        const parent = q && findNode(q.steps, form.dataset.parent);
-        if (!parent) return;
-        const node = newNode(text);
-        const di = form.querySelector('.add-date');
-        if (di && isDateStr(di.value)) node.deadline = di.value;
-        parent.done = false;
-        parent.open = true;
-        parent.steps.push(node);
+        const s = q && findStep(q, form.dataset.step);
+        if (!s) return;
+        const parent = form.dataset.parent ? findSubRec(s.subs, form.dataset.parent) : null;
+        (parent ? parent.subs : s.subs).push(newSub(text));
+        if (parent) parent.done = false; else s.done = false;
+        if (parent) parent.open = true;
         syncQuestDone(q);
-        refocusSel = `form[data-action="add-sub"][data-parent="${parent.id}"] input[type="text"]`;
+        refocusSel = `form[data-action="add-sub"]${form.dataset.parent ? `[data-parent="${form.dataset.parent}"]` : `[data-step="${s.id}"]:not([data-parent])`} input`;
         break;
       }
-
-      case 'add-agenda': {
-        const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr();
-        state.agenda.push({ id: uid(), text, date, done: false, doneAt: null });
-        refocusSel = `form[data-action="add-agenda"] input[type="text"]`;
-        break;
-      }
-
-      case 'add-list':
-        state.lists.push({ id: uid(), name: text, open: true, items: [] });
-        refocusSel = 'form[data-action="add-list"] input';
-        break;
-      case 'add-item': {
-        const l = state.lists.find(l => l.id === form.dataset.list);
-        if (!l) return;
-        l.items.push({ id: uid(), text, done: false });
-        refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`;
-        break;
-      }
-
+      case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
+      case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); state.agenda.push({ id: uid(), text, date, done: false, doneAt: null }); refocusSel = `form[data-action="add-agenda"] input`; break; }
+      case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
+      case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
       default: return;
     }
-
-    save();
-    render();
+    save(); render();
   });
 
-  tabbar.addEventListener('click', e => {
-    const btn = e.target.closest('.tab');
-    if (!btn) return;
-    activeTab = btn.dataset.tab;
-    activeQuestId = null;
-    render();
-  });
+  tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; render(); });
 
-  function onReturn() {
-    if (document.visibilityState !== 'visible') return;
-    const changed = auditAllStreaks();
-    if (changed || dayStamp !== todayStr()) {
-      dayStamp = todayStr();
-      if (changed) save();
-      render();
-    }
-  }
+  function onReturn() { if (document.visibilityState !== 'visible') return; const ch = auditAllStreaks(); if (ch || dayStamp !== todayStr()) { dayStamp = todayStr(); if (ch) save(); render(); } }
   document.addEventListener('visibilitychange', onReturn);
   window.addEventListener('focus', onReturn);
-
-  /* ---------- Start ---------- */
 
   auditAllStreaks();
   save();
   render();
 
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(e =>
-        console.warn('Quest-Log: Service Worker nicht registriert', e));
-    });
-  }
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.warn('Quest-Log: Service Worker nicht registriert', e)));
 })();
