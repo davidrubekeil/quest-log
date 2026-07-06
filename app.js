@@ -541,8 +541,8 @@
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const kids = sub.subs.filter(k => !subDone(k));
-    // Nur Blatt-Unterschritte lassen sich mit Datum als Tagesaufgabe aufs Dashboard legen (bei Skills nicht).
-    const schedule = (showNext && !hasKids)
+    // Jeder Unterschritt lässt sich mit Datum als Tagesaufgabe aufs Dashboard legen (bei Skills nicht).
+    const schedule = showNext
       ? (sub.scheduledDate
         ? `<span class="sub-sched" title="Tagesaufgabe am ${fmtShort(sub.scheduledDate)} — Datum leeren zum Entfernen"><span class="sub-sched-chip">${fmtShort(sub.scheduledDate)}</span><input class="sub-sched-input" type="date" data-field="sub-schedule" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" value="${sub.scheduledDate}"></span>`
         : `<button class="sub-schedule-btn" data-action="schedule-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Als Tagesaufgabe planen" title="Als Tagesaufgabe aufs Dashboard legen">${ICONS.calendar}</button>`)
@@ -905,9 +905,15 @@
   function dashTaskRow(t, opts = {}) {
     const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true, taskActions = false, date = todayStr() } = opts;
     const nextDate = addDays(date, 1);
+    // Branch-Unterschritt (mit Kindern) ist nicht direkt abhakbar → Fortschrittsmarke statt Checkbox.
+    const isBranch = t.kind === 'qsub' && t.subs && t.subs.length > 0;
+    const branchLeaves = isBranch ? t.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 }) : null;
     const checkAttr = t.kind === 'qstep' ? `data-action="toggle-step" data-quest="${t.questId}" data-id="${t.stepId}"`
       : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
       : `data-action="toggle-agenda" data-id="${t.id}"`;
+    const control = isBranch
+      ? `<span class="branch-mark dash-branch" title="Teil-Aufgaben im Quest abhaken">${branchLeaves.done}/${branchLeaves.total}</span>`
+      : `<button class="checkbox" ${checkAttr} aria-label="Abhaken">${ICONS.check}</button>`;
     // Namen umbenennbar (nutzt die bestehende Edit-Mechanik je nach Aufgaben-Typ).
     const editAttr = t.kind === 'qstep' ? `data-edit="step-text" data-quest="${t.questId}" data-id="${t.stepId}"`
       : t.kind === 'qsub' ? `data-edit="sub-text" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
@@ -936,7 +942,7 @@
       : '';
     return `<li class="dash-task${t.done ? ' done' : ''}">
       <div class="row">
-        <button class="checkbox" ${checkAttr} aria-label="Abhaken">${ICONS.check}</button>
+        ${control}
         <span class="row-text editable" ${editAttr}>${esc(t.text)}</span>
         ${questTag}${overdueTag}${push}${del}${star}${arrows}
       </div>
@@ -1133,7 +1139,7 @@
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
       case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
       case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); syncQuestDone(q); break; }
-      case 'schedule-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub && !sub.subs.length) sub.scheduledDate = todayStr(); break; }
+      case 'schedule-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.scheduledDate = todayStr(); break; }
 
       case 'del-ms': { const q = state.quests.find(q => q.id === questId); if (q) q.milestones = q.milestones.filter(m => m.id !== id); break; }
 
