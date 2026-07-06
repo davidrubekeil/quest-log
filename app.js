@@ -165,7 +165,7 @@
 
   /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: [] });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, scratchpad: [] });
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -206,6 +206,7 @@
     if (!raw || typeof raw !== 'object' || !isDateStr(raw.date)) return null;
     return {
       id: raw.id || uid(), text: String(raw.text ?? ''), date: raw.date, done: !!raw.done, doneAt: raw.doneAt || null,
+      eventId: typeof raw.eventId === 'string' ? raw.eventId : null,
       subs: (Array.isArray(raw.subs) ? raw.subs : []).map(normalizeAgendaSub).filter(Boolean),
     };
   }
@@ -258,10 +259,30 @@
     if (Array.isArray(raw.events)) s.events = raw.events.map(normalizeEvent).filter(Boolean);
     if (typeof raw.focusQuestId === 'string') s.focusQuestId = raw.focusQuestId;
 
+    // Top-Aufgaben sind pro Tag (Objekt: Datum -> Referenzliste). Migration aus der
+    // alten flachen Liste: einem Task nach seinem aktuellen Datum zuordnen.
+    const addTop = (map, date, ref) => { if (!isDateStr(date)) return; (map[date] || (map[date] = [])); if (map[date].length < 3) map[date].push(ref); };
     if (Array.isArray(raw.topTasks)) {
-      s.topTasks = raw.topTasks.filter(t => t && typeof t === 'object' && taskRefExists(s, t)).slice(0, 3);
+      for (const t of raw.topTasks) { if (t && typeof t === 'object' && taskRefExists(s, t)) addTop(s.topTasks, taskRefDate(s, t), t); }
+    } else if (raw.topTasks && typeof raw.topTasks === 'object') {
+      for (const [date, arr] of Object.entries(raw.topTasks)) {
+        if (!isDateStr(date) || !Array.isArray(arr)) continue;
+        for (const t of arr) if (t && typeof t === 'object' && taskRefExists(s, t)) addTop(s.topTasks, date, t);
+      }
+    }
+
+    if (Array.isArray(raw.scratchpad)) {
+      s.scratchpad = raw.scratchpad.map(n => (n && typeof n === 'object' && (n.text ?? '') !== '') ? { id: n.id || uid(), text: String(n.text) } : null).filter(Boolean);
     }
     return s;
+  }
+
+  /* aktuelles Datum, unter dem eine Top-Referenz einsortiert gehört (für Migration/Validierung) */
+  function taskRefDate(s, t) {
+    if (t.kind === 'agenda') { const a = s.agenda.find(a => a.id === t.id); return a ? a.date : null; }
+    if (t.kind === 'qstep') { const q = s.quests.find(q => q.id === t.questId); const st = q && findStep(q, t.stepId); return st ? st.deadline : null; }
+    if (t.kind === 'qsub') { const q = s.quests.find(q => q.id === t.questId); const st = q && findStep(q, t.stepId); const sub = st && findSubRec(st.subs, t.subId); return sub ? sub.scheduledDate : null; }
+    return null;
   }
 
   /* prüft, ob eine Top-Aufgaben-Referenz noch auf einen echten Datensatz zeigt */
@@ -309,7 +330,15 @@
     if (t.kind === 'agenda') return `agenda:${t.id}`;
     return '';
   }
-  const isStarred = t => state.topTasks.some(x => taskKey(x) === taskKey(t));
+  const topList = date => state.topTasks[date] || [];
+  const isStarred = (t, date) => topList(date).some(x => taskKey(x) === taskKey(t));
+  /* entfernt eine Task-Referenz aus allen Tages-Top-Listen (bei Verschieben/Löschen) */
+  function removeFromAllTop(key) {
+    for (const date of Object.keys(state.topTasks)) {
+      const arr = state.topTasks[date].filter(x => taskKey(x) !== key);
+      if (arr.length) state.topTasks[date] = arr; else delete state.topTasks[date];
+    }
+  }
 
   /* Container-Schritte (mit Unterschritten), deren Frist auf dateStr fällt — rein informativ, klickbar zur Quest. */
   function collectDayDeadlineSteps(dateStr) {
@@ -713,10 +742,14 @@
   }
 
   function renderEventContext(e) {
-    const tasks = state.agenda.filter(a => a.date >= e.start && a.date <= eventEnd(e)).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    // Verknüpfte Aufgaben (eventId) unabhängig vom Datum + unverknüpfte Aufgaben in der Event-Spanne.
+    const tasks = state.agenda
+      .filter(a => a.eventId === e.id || (!a.eventId && a.date >= e.start && a.date <= eventEnd(e)))
+      .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
     const taskRows = tasks.map(a => {
       const subRows = a.subs.length ? `<ul class="dash-subs">${a.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>` : '';
-      return `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>${subRows}`;
+      const early = a.date < e.start ? ' before' : '';
+      return `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text editable" data-edit="agenda-text" data-id="${a.id}">${esc(a.text)}</span><input class="ev-task-dateinput${early}" type="date" data-field="agenda-date" data-id="${a.id}" value="${a.date}" title="Datum der Aufgabe"><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>${subRows}`;
     }).join('');
     const dateFields = e.multiDay
       ? `<div class="meta-row">
@@ -737,7 +770,7 @@
       <div class="ctx-block">
         <div class="ctx-label">Tagesaufgaben</div>
         <ul class="items">${taskRows}</ul>
-        ${addMini('add-agenda', 'Tagesaufgabe', ` data-date="${e.start}"`)}
+        ${addMini('add-agenda', 'Tagesaufgabe', ` data-date="${e.start}" data-event="${e.id}"`)}
       </div>
       <div class="ctx-block">
         <div class="ctx-label">Notizen</div>
@@ -863,7 +896,8 @@
   /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
 
   function dashTaskRow(t, opts = {}) {
-    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true, taskActions = false } = opts;
+    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true, taskActions = false, date = todayStr() } = opts;
+    const nextDate = addDays(date, 1);
     const checkAttr = t.kind === 'qstep' ? `data-action="toggle-step" data-quest="${t.questId}" data-id="${t.stepId}"`
       : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
       : `data-action="toggle-agenda" data-id="${t.id}"`;
@@ -879,13 +913,13 @@
       : `data-kind="agenda" data-id="${t.id}"`;
     const questTag = (t.kind === 'qstep' || t.kind === 'qsub') ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '';
     const overdueTag = t.overdueDays ? `<span class="dash-overdue-tag">seit ${t.overdueDays} ${t.overdueDays === 1 ? 'Tag' : 'Tagen'} überfällig</span>` : '';
-    const starAttr = `data-kind="${t.kind}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
-    const push = taskActions ? `<button class="dash-push" data-action="task-push" ${pushAttr} aria-label="Auf morgen verschieben" title="Auf morgen verschieben">${ICONS.arrowRight}</button>` : '';
+    const starAttr = `data-kind="${t.kind}" data-date="${date}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
+    const push = taskActions ? `<button class="dash-push" data-action="task-push" ${pushAttr} data-next="${nextDate}" aria-label="Auf nächsten Tag verschieben" title="Auf nächsten Tag verschieben">${ICONS.arrowRight}</button>` : '';
     const del = taskActions ? `<button class="del" ${delAttr} aria-label="Aufgabe löschen">${ICONS.x}</button>` : '';
-    const star = starButton ? `<button class="star${isStarred(t) ? ' active' : ''}" data-action="toggle-star" ${starAttr}${!canStar ? ' disabled' : ''} aria-label="Als Top-Aufgabe markieren">${ICONS.star}</button>` : '';
+    const star = starButton ? `<button class="star${isStarred(t, date) ? ' active' : ''}" data-action="toggle-star" ${starAttr}${!canStar ? ' disabled' : ''} aria-label="Als Top-Aufgabe markieren">${ICONS.star}</button>` : '';
     const arrows = arrowsLen > 1 ? `<span class="arrows">
-        <button class="arrow-up" data-action="topTask-up" data-index="${arrowIndex}"${arrowIndex === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
-        <button class="arrow-down" data-action="topTask-down" data-index="${arrowIndex}"${arrowIndex === arrowsLen - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
+        <button class="arrow-up" data-action="topTask-up" data-date="${date}" data-index="${arrowIndex}"${arrowIndex === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
+        <button class="arrow-down" data-action="topTask-down" data-date="${date}" data-index="${arrowIndex}"${arrowIndex === arrowsLen - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
       </span>` : '';
     const subForm = !showSubForm ? '' : t.kind === 'agenda'
       ? addMini('dash-add-agenda-sub', 'Unterschritt', ` data-agenda="${t.id}"`)
@@ -903,60 +937,75 @@
     </li>`;
   }
 
-  function resolveTopTask(ref) {
-    if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s) }; }
-    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub) }; }
-    if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs }; }
+  /* Löst eine Top-Referenz für einen bestimmten Tag auf; verwirft sie, wenn die Aufgabe
+     nicht mehr existiert oder inzwischen an einem anderen Tag liegt (z. B. verschoben). */
+  function resolveTopTask(ref, dateStr) {
+    if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || s.deadline !== dateStr) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s) }; }
+    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || sub.scheduledDate !== dateStr) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub) }; }
+    if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || a.date !== dateStr) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs }; }
     return null;
   }
 
-  function renderTodayDashboard() {
-    const today = todayStr();
-    const d = parseDate(today);
-    const evCover = eventsCovering(today);
-    const deadlineSteps = collectDayDeadlineSteps(today);
+  function renderScratchpad() {
+    const items = state.scratchpad.map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+    return `<div class="dash-scratch">
+      <div class="dash-label">Gedanken</div>
+      <ul class="scratch-list">${items}</ul>
+      <form class="add-row add-scratch" data-action="add-scratch"><input type="text" placeholder="Gedanke …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+    </div>`;
+  }
+
+  function renderDashboard(dateStr) {
+    const d = parseDate(dateStr);
+    const isToday = dateStr === todayStr();
+    const evCover = eventsCovering(dateStr);
+    const deadlineSteps = collectDayDeadlineSteps(dateStr);
     const termineRows = [
-      ...evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}${eventTimeLabel(e, today) ? ` · ${eventTimeLabel(e, today)}` : ''}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`),
+      ...evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}${eventTimeLabel(e, dateStr) ? ` · ${eventTimeLabel(e, dateStr)}` : ''}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`),
       ...deadlineSteps.map(s => `<li class="row marker"><span class="cdot" style="background:${DOT.branch}"></span><button class="marker-link" data-action="open-quest-from-cal" data-id="${s.questId}">${esc(s.text)} · ${esc(s.questTitle)}</button><span class="marker-tag">Frist</span></li>`),
     ].join('');
     const termine = termineRows ? `<div class="dash-termine"><ul class="items">${termineRows}</ul></div>` : '';
 
-    const topRefs = state.topTasks.map(resolveTopTask).filter(Boolean);
+    const topRefs = topList(dateStr).map(ref => resolveTopTask(ref, dateStr)).filter(Boolean);
     const topKeys = new Set(topRefs.map(taskKey));
-    const allTasks = collectDayTasks(today).filter(t => !topKeys.has(taskKey(t)));
-    const overdue = collectOverdueTasks(today).filter(t => !topKeys.has(taskKey(t)));
-    const canStar = state.topTasks.length < 3;
+    const allTasks = collectDayTasks(dateStr).filter(t => !topKeys.has(taskKey(t)));
+    const overdue = isToday ? collectOverdueTasks(dateStr).filter(t => !topKeys.has(taskKey(t))) : [];
+    const canStar = topRefs.length < 3;
 
     const topBox = `<div class="dash-top"><div class="dash-label">Top-Aufgaben${topRefs.length ? '' : ' <span class="dash-hint">— mit ★ markieren</span>'}</div>
-      ${topRefs.length ? `<ul class="items">${topRefs.map((t, i) => dashTaskRow(t, { arrowIndex: i, arrowsLen: topRefs.length })).join('')}</ul>` : ''}
+      ${topRefs.length ? `<ul class="items">${topRefs.map((t, i) => dashTaskRow(t, { date: dateStr, arrowIndex: i, arrowsLen: topRefs.length })).join('')}</ul>` : ''}
     </div>`;
 
-    const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { canStar, taskActions: true })).join('')}</ul></div>` : '';
+    const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { date: dateStr, canStar, taskActions: true })).join('')}</ul></div>` : '';
 
-    const doneTasks = collectDoneDayTasks(today).filter(t => !topKeys.has(taskKey(t)));
+    const doneTasks = collectDoneDayTasks(dateStr).filter(t => !topKeys.has(taskKey(t)));
     const dashTabs = `<div class="step-tabs">
       <button data-action="dash-tab" data-tab="offen" class="${dashTab === 'offen' ? 'active' : ''}">Offen<span class="seg-count">${allTasks.length}</span></button>
       <button data-action="dash-tab" data-tab="erledigt" class="${dashTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${doneTasks.length}</span></button>
     </div>`;
-    const openList = allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar, taskActions: true })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>';
-    const doneList = doneTasks.length ? `<ul class="items">${doneTasks.map(t => dashTaskRow(t, { starButton: false, showSubForm: false })).join('')}</ul>` : '<div class="empty">— nichts erledigt —</div>';
+    const openList = allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { date: dateStr, canStar, taskActions: true })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>';
+    const doneList = doneTasks.length ? `<ul class="items">${doneTasks.map(t => dashTaskRow(t, { date: dateStr, starButton: false, showSubForm: false })).join('')}</ul>` : '<div class="empty">— nichts erledigt —</div>';
 
     const tasksBox = `<div class="dash-tasks">
       ${dashTabs}
       ${dashTab === 'erledigt' ? doneList : openList}
-      ${dashTab === 'offen' ? `<form class="add-row add-agenda" data-action="add-agenda" data-date="${today}"><input type="text" placeholder="Aufgabe für heute …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
+      ${dashTab === 'offen' ? `<form class="add-row add-agenda" data-action="add-agenda" data-date="${dateStr}"><input type="text" placeholder="${isToday ? 'Aufgabe für heute …' : 'Aufgabe für diesen Tag …'}" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
     </div>`;
 
     return `<div class="dashboard">
-      <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
-      ${termine}
-      ${topBox}
-      ${overdueBox}
-      ${tasksBox}
+      <div class="dash-main">
+        <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
+        ${termine}
+        ${topBox}
+        ${overdueBox}
+        ${tasksBox}
+      </div>
+      <div class="dash-side">${renderScratchpad()}</div>
     </div>`;
   }
 
-  function renderDay(byDate) { return calCursor === todayStr() ? renderTodayDashboard() : renderPlainDay(byDate); }
+  /* Dashboard für heute und künftige Tage; vergangene Tage weiterhin als einfache Liste. */
+  function renderDay(byDate) { return calCursor >= todayStr() ? renderDashboard(calCursor) : renderPlainDay(byDate); }
 
   function renderCalendar() {
     const byDate = entriesByDate();
@@ -1007,6 +1056,7 @@
       case 'ms-text': { const q = state.quests.find(q => q.id === ds.quest); const m = q && q.milestones.find(m => m.id === ds.id); if (m) m.text = val; break; }
       case 'ev-name': { const ev = state.events.find(x => x.id === ds.id); if (ev) ev.name = val; break; }
       case 'agenda-text': { const a = state.agenda.find(a => a.id === ds.id); if (a) a.text = val; break; }
+      case 'scratch-text': { const n = state.scratchpad.find(n => n.id === ds.id); if (n) n.text = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
@@ -1072,10 +1122,10 @@
       case 'toggle-next': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.nextStepId = q.nextStepId === id ? null : id; break; }
 
       case 'toggle-step': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (!s || stepHasSubs(s)) return; s.done = !s.done; s.doneAt = s.done ? nowISO() : null; if (s.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
-      case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); if (id === activeStepId) activeStepId = null; if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
+      case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); removeFromAllTop(taskKey({ kind: 'qstep', questId, stepId: id })); if (id === activeStepId) activeStepId = null; if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
       case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
-      case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); syncQuestDone(q); break; }
+      case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); syncQuestDone(q); break; }
 
       case 'del-ms': { const q = state.quests.find(q => q.id === questId); if (q) q.milestones = q.milestones.filter(m => m.id !== id); break; }
 
@@ -1086,28 +1136,33 @@
       case 'cal-day': calCursor = el.dataset.date; calView = 'tag'; break;
       case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; activeTab = 'quests'; questCat = q.done ? 'erledigt' : q.category; activeQuestId = q.done ? null : q.id; activeStepId = null; stepTab = 'aktuell'; break; }
       case 'toggle-agenda': { const a = state.agenda.find(a => a.id === id); if (!a) return; a.done = !a.done; a.doneAt = a.done ? nowISO() : null; break; }
-      case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); break;
+      case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); removeFromAllTop(taskKey({ kind: 'agenda', id })); break;
       case 'toggle-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); const sub = a && a.subs.find(s => s.id === id); if (!sub) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; break; }
       case 'del-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); if (a) a.subs = a.subs.filter(s => s.id !== id); break; }
 
       case 'toggle-star': {
         const ds = el.dataset;
+        const date = ds.date;
         const ref = ds.kind === 'agenda' ? { kind: 'agenda', id: ds.id } : { kind: ds.kind, questId: ds.quest, stepId: ds.step, subId: ds.sub || undefined };
         const k = taskKey(ref);
-        const i = state.topTasks.findIndex(t => taskKey(t) === k);
-        if (i >= 0) state.topTasks.splice(i, 1);
-        else if (state.topTasks.length < 3) state.topTasks.push(ref);
+        const arr = (state.topTasks[date] || []).filter(x => resolveTopTask(x, date)); // veraltete Referenzen bereinigen
+        const i = arr.findIndex(x => taskKey(x) === k);
+        if (i >= 0) arr.splice(i, 1);
+        else if (arr.length < 3) arr.push(ref);
         else return;
+        if (arr.length) state.topTasks[date] = arr; else delete state.topTasks[date];
         break;
       }
-      case 'topTask-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.topTasks[i - 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i - 1]]; break; }
-      case 'topTask-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.topTasks.length - 1) return; [state.topTasks[i + 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i + 1]]; break; }
+      case 'topTask-up': { const date = el.dataset.date; const arr = state.topTasks[date]; const i = Number(el.dataset.index); if (!arr || i <= 0) return; [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; break; }
+      case 'topTask-down': { const date = el.dataset.date; const arr = state.topTasks[date]; const i = Number(el.dataset.index); if (!arr || i < 0 || i >= arr.length - 1) return; [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; break; }
       case 'task-push': {
         const ds = el.dataset;
-        const next = addDays(todayStr(), 1); // Dashboard zeigt nur heutige/überfällige Aufgaben → nächster Tag = morgen
-        if (ds.kind === 'agenda') { const a = state.agenda.find(a => a.id === ds.id); if (a) a.date = next; }
-        else if (ds.kind === 'qsub') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.sub); if (sub) sub.scheduledDate = next; }
-        else if (ds.kind === 'qstep') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); if (s) s.deadline = next; }
+        const next = isDateStr(ds.next) ? ds.next : addDays(todayStr(), 1);
+        let key = '';
+        if (ds.kind === 'agenda') { const a = state.agenda.find(a => a.id === ds.id); if (a) { a.date = next; key = taskKey({ kind: 'agenda', id: a.id }); } }
+        else if (ds.kind === 'qsub') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.sub); if (sub) { sub.scheduledDate = next; key = taskKey({ kind: 'qsub', questId: ds.quest, stepId: ds.step, subId: ds.sub }); } }
+        else if (ds.kind === 'qstep') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); if (s) { s.deadline = next; key = taskKey({ kind: 'qstep', questId: ds.quest, stepId: ds.step }); } }
+        if (key) removeFromAllTop(key); // verschobene Aufgabe verlässt die Top-Liste ihres alten Tages
         break;
       }
 
@@ -1115,6 +1170,7 @@
       case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
       case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
       case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
+      case 'del-scratch': state.scratchpad = state.scratchpad.filter(n => n.id !== id); break;
 
       default: return;
     }
@@ -1146,6 +1202,7 @@
     else if (f === 'ms-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const m = q && q.milestones.find(m => m.id === input.dataset.id); if (m) m.deadline = v; }
     else if (f === 'ev-start') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev && v) { ev.start = v; if (ev.end && ev.end < ev.start) ev.end = null; } }
     else if (f === 'ev-end') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev) ev.end = (v && v >= ev.start) ? v : null; }
+    else if (f === 'agenda-date') { const a = state.agenda.find(a => a.id === input.dataset.id); if (a && v) { removeFromAllTop(taskKey({ kind: 'agenda', id: a.id })); a.date = v; } }
     save(); render();
   });
 
@@ -1180,7 +1237,8 @@
         break;
       }
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
-      case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [] }); refocusSel = `form[data-action="add-agenda"] input`; break; }
+      case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); const eventId = form.dataset.event || null; state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [], eventId }); refocusSel = `form[data-action="add-agenda"]${eventId ? `[data-event="${eventId}"]` : ''} input`; break; }
+      case 'add-scratch': { state.scratchpad.push({ id: uid(), text }); refocusSel = `form[data-action="add-scratch"] input`; break; }
       case 'dash-add-agenda-sub': { const a = state.agenda.find(a => a.id === form.dataset.agenda); if (!a) return; a.subs.push({ id: uid(), text, done: false, doneAt: null }); refocusSel = `form[data-action="dash-add-agenda-sub"][data-agenda="${a.id}"] input`; break; }
       case 'dash-add-qsub': {
         const q = state.quests.find(q => q.id === form.dataset.quest);

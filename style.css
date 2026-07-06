@@ -972,6 +972,18 @@ input { font: inherit; color: inherit; }
 /* Event-Datum feste Breite -> Namen in einer Flucht */
 .ev-date { width: 92px; min-width: 0; white-space: nowrap; overflow: hidden; }
 .ev-task-date { flex: none; font-size: 10px; color: var(--muted); }
+.ev-task-dateinput {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 1px 3px;
+  transition: border-color 0.12s, color 0.12s;
+}
+.ev-task-dateinput:hover, .ev-task-dateinput:focus { border-color: var(--rule); color: var(--ink); outline: none; }
+.ev-task-dateinput.before { color: var(--red); } /* Aufgabe liegt vor dem Event */
 
 /* Detail-Kopfleiste (Zurück) über volle Breite -> Spalten beginnen auf gleicher Höhe */
 .detail-bar { grid-column: 1 / -1; margin-bottom: 8px; }
@@ -985,8 +997,35 @@ input { font: inherit; color: inherit; }
 
 /* ---------- Tagesstartseite: Productivity-Dashboard ---------- */
 
-.dashboard { max-width: 620px; }
+.dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(200px, 300px);
+  gap: 48px;
+  align-items: start;
+}
+.dash-main { min-width: 0; }
 .dashboard .day-head { margin-bottom: 14px; }
+
+/* Notizfeld (Gedanken) rechts */
+.dash-side { min-width: 0; }
+.dash-scratch { position: sticky; top: 12px; }
+.scratch-list { list-style: none; margin: 4px 0 0; }
+.scratch-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+}
+.scratch-bullet { flex: none; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.scratch-item .row-text { font-size: 13px; line-height: 1.5; }
+.scratch-item .del { align-self: center; }
+.scratch-item:hover .del { opacity: 0.4; }
+.add-scratch { margin-top: 10px; }
+
+@media (max-width: 900px) {
+  .dashboard { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .dash-scratch { position: static; }
+}
 
 .dash-termine { margin-bottom: 18px; }
 .dash-termine .items { list-style: none; }
