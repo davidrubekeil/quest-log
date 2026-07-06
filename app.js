@@ -319,34 +319,36 @@
     return out;
   }
 
-  function walkSubsMatching(subs, questId, stepId, questTitle, dateMatches, out) {
+  function walkSubsMatching(subs, questId, stepId, questTitle, dateMatches, wantDone, out) {
     for (const sub of subs) {
-      if (sub.scheduledDate && !subDone(sub) && dateMatches(sub.scheduledDate)) {
-        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, done: false, subs: sub.subs, refDate: sub.scheduledDate });
+      if (sub.scheduledDate && subDone(sub) === wantDone && dateMatches(sub.scheduledDate)) {
+        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, done: wantDone, subs: sub.subs, refDate: sub.scheduledDate });
       }
-      walkSubsMatching(sub.subs, questId, stepId, questTitle, dateMatches, out);
+      walkSubsMatching(sub.subs, questId, stepId, questTitle, dateMatches, wantDone, out);
     }
   }
-  /* Einheitliche Aufgaben-Liste: Quest-Blätter (Frist), Quest-Unterschritte (geplant) und Tagesaufgaben. */
-  function collectTasksMatching(dateMatches) {
+  /* Einheitliche Aufgaben-Liste: Quest-Blätter (Frist), Quest-Unterschritte (geplant) und Tagesaufgaben.
+     wantDone=false → offene Aufgaben, wantDone=true → das erledigte Gegenstück (Dashboard-Archiv). */
+  function collectTasksMatching(dateMatches, wantDone = false) {
     const out = [];
     for (const q of state.quests) {
       if (q.category === 'skill') continue;
       for (const s of q.steps) {
         if (s.type === 'laufend') continue;
-        if (!stepHasSubs(s) && s.deadline && !s.done && dateMatches(s.deadline)) {
-          out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: false, refDate: s.deadline });
+        if (!stepHasSubs(s) && s.deadline && s.done === wantDone && dateMatches(s.deadline)) {
+          out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: wantDone, refDate: s.deadline });
         }
-        walkSubsMatching(s.subs, q.id, s.id, q.title, dateMatches, out);
+        walkSubsMatching(s.subs, q.id, s.id, q.title, dateMatches, wantDone, out);
       }
     }
     for (const a of state.agenda) {
-      if (!a.done && dateMatches(a.date)) out.push({ kind: 'agenda', id: a.id, text: a.text, done: false, subs: a.subs, refDate: a.date });
+      if (a.done === wantDone && dateMatches(a.date)) out.push({ kind: 'agenda', id: a.id, text: a.text, done: wantDone, subs: a.subs, refDate: a.date });
     }
     return out;
   }
-  const collectDayTasks = dateStr => collectTasksMatching(d => d === dateStr);
-  const collectOverdueTasks = beforeDateStr => collectTasksMatching(d => d < beforeDateStr)
+  const collectDayTasks = dateStr => collectTasksMatching(d => d === dateStr, false);
+  const collectDoneDayTasks = dateStr => collectTasksMatching(d => d === dateStr, true);
+  const collectOverdueTasks = beforeDateStr => collectTasksMatching(d => d < beforeDateStr, false)
     .map(t => ({ ...t, overdueDays: dayDiff(t.refDate, beforeDateStr) }))
     .sort((a, b) => b.overdueDays - a.overdueDays);
 
@@ -387,6 +389,7 @@
   let activeStepId = null;
   let activeEventId = null;
   let stepTab = 'aktuell';
+  let dashTab = 'offen';
   let calView = 'tag';
   let calCursor = todayStr();
   let dayStamp = todayStr();
@@ -499,7 +502,7 @@
     return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}">
       <div class="node-row">
         <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
-        ${control}
+        <span class="node-control">${control}</span>
         <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
         ${showNext ? nextBtn(questId, sub.id, isNext) : ''}
         <button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button>
@@ -527,7 +530,7 @@
     return `<li class="node step${sel ? ' sel' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${s.open ? ' open' : ''}">
       <div class="node-row" data-action="select-step" data-quest="${questId}" data-id="${s.id}">
         <button class="chev" data-action="toggle-step-open" data-quest="${questId}" data-id="${s.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
-        ${control}
+        <span class="node-control">${control}</span>
         <span class="row-text${sel ? ' editable' : ''}"${sel ? ` data-edit="step-text" data-quest="${questId}" data-id="${s.id}"` : ''}>${esc(s.text)}</span>
         ${tail}
         ${showNext ? nextBtn(questId, s.id, isNext) : ''}
@@ -551,7 +554,7 @@
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
     return `<li class="node sub arch${done ? ' done' : ' context'}">
-      <div class="node-row">${control}<span class="row-text">${esc(sub.text)}</span></div>
+      <div class="node-row"><span class="node-control">${control}</span><span class="row-text">${esc(sub.text)}</span></div>
       ${kids.length ? `<ul class="subtree">${kids.map(k => renderDoneSub(k, questId, stepId)).join('')}</ul>` : ''}
     </li>`;
   }
@@ -564,7 +567,7 @@
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
     return `<li class="node step arch${done ? ' done' : ' context'}">
-      <div class="node-row">${control}<span class="row-text">${esc(s.text)}</span></div>
+      <div class="node-row"><span class="node-control">${control}</span><span class="row-text">${esc(s.text)}</span></div>
       ${kids.length ? `<ul class="subtree">${kids.map(k => renderDoneSub(k, questId, s.id)).join('')}</ul>` : ''}
     </li>`;
   }
@@ -833,7 +836,7 @@
   /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
 
   function dashTaskRow(t, opts = {}) {
-    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true } = opts;
+    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true } = opts;
     const checkAttr = t.kind === 'qstep' ? `data-action="toggle-step" data-quest="${t.questId}" data-id="${t.stepId}"`
       : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
       : `data-action="toggle-agenda" data-id="${t.id}"`;
@@ -845,7 +848,7 @@
         <button class="arrow-up" data-action="topTask-up" data-index="${arrowIndex}"${arrowIndex === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
         <button class="arrow-down" data-action="topTask-down" data-index="${arrowIndex}"${arrowIndex === arrowsLen - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
       </span>` : '';
-    const subForm = t.kind === 'agenda'
+    const subForm = !showSubForm ? '' : t.kind === 'agenda'
       ? addMini('dash-add-agenda-sub', 'Unterschritt', ` data-agenda="${t.id}"`)
       : addMini('dash-add-qsub', 'Unterschritt', ` data-quest="${t.questId}" data-step="${t.stepId}"${t.kind === 'qsub' ? ` data-parent="${t.subId}"` : ''}`);
     const subsList = (t.kind === 'agenda' && t.subs && t.subs.length)
@@ -891,9 +894,18 @@
 
     const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { canStar })).join('')}</ul></div>` : '';
 
-    const tasksBox = `<div class="dash-tasks"><div class="dash-label">Aufgaben heute</div>
-      ${allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>'}
-      <form class="add-row add-agenda" data-action="add-agenda" data-date="${today}"><input type="text" placeholder="Aufgabe für heute …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+    const doneTasks = collectDoneDayTasks(today).filter(t => !topKeys.has(taskKey(t)));
+    const dashTabs = `<div class="step-tabs">
+      <button data-action="dash-tab" data-tab="offen" class="${dashTab === 'offen' ? 'active' : ''}">Offen<span class="seg-count">${allTasks.length}</span></button>
+      <button data-action="dash-tab" data-tab="erledigt" class="${dashTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${doneTasks.length}</span></button>
+    </div>`;
+    const openList = allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>';
+    const doneList = doneTasks.length ? `<ul class="items">${doneTasks.map(t => dashTaskRow(t, { starButton: false, showSubForm: false })).join('')}</ul>` : '<div class="empty">— nichts erledigt —</div>';
+
+    const tasksBox = `<div class="dash-tasks">
+      ${dashTabs}
+      ${dashTab === 'erledigt' ? doneList : openList}
+      ${dashTab === 'offen' ? `<form class="add-row add-agenda" data-action="add-agenda" data-date="${today}"><input type="text" placeholder="Aufgabe für heute …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
     </div>`;
 
     return `<div class="dashboard">
@@ -1010,6 +1022,7 @@
       case 'toggle-focus': state.focusQuestId = state.focusQuestId === id ? null : id; break;
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
+      case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
       case 'select-step': { if (id === activeStepId) return; activeStepId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
       case 'deselect-step': activeStepId = null; break;
       case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }

@@ -644,6 +644,10 @@ input { font: inherit; color: inherit; }
 .node-row .checkbox { width: 16px; height: 16px; }
 .node-row .checkbox .ico { width: 10px; height: 10px; }
 
+/* Feste Breite für Checkbox/Fortschritts-Marker, damit der Text unabhängig
+   davon, ob ein Knoten Blatt oder Container ist, in einer Flucht steht. */
+.node-control { flex: none; width: 46px; display: flex; align-items: center; }
+
 .node-row .row-text { font-size: 13px; }
 
 /* Verschachtelung: je Ebene Einzug + dezente linke Spaltenlinie */
