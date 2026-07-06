@@ -369,8 +369,9 @@
     for (const q of state.quests) {
       if (q.category === 'skill') continue;
       for (const s of q.steps) {
-        if (s.type === 'laufend') continue;
-        if (!stepHasSubs(s) && s.deadline && s.done === wantDone && dateMatches(s.deadline)) {
+        // Frist-Schritt als Blatt = eigene Tagesaufgabe. Laufend-Schritte selbst nicht,
+        // aber ihre terminierten Unterschritte sehr wohl → Teilbaum immer durchlaufen.
+        if (s.type !== 'laufend' && !stepHasSubs(s) && s.deadline && s.done === wantDone && dateMatches(s.deadline)) {
           out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: wantDone, refDate: s.deadline });
         }
         walkSubsMatching(s.subs, q.id, s.id, q.title, dateMatches, wantDone, out);

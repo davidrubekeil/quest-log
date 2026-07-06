@@ -84,7 +84,7 @@ input { font: inherit; color: inherit; }
 /* ---------- Inhalt ---------- */
 
 .view {
-  max-width: 1160px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 8px 32px 96px;
 }
@@ -1038,8 +1038,8 @@ input { font: inherit; color: inherit; }
 
 .dashboard {
   display: grid;
-  grid-template-columns: minmax(0, 620px) minmax(200px, 300px);
-  gap: 48px;
+  grid-template-columns: minmax(0, 720px) minmax(220px, 340px);
+  gap: 56px;
   align-items: start;
 }
 .dash-main { min-width: 0; }
