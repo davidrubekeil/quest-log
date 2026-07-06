@@ -71,6 +71,8 @@
   const WD_SHORT = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
   const WD_FULL = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
   const wdIndexMon = d => (d.getDay() + 6) % 7;
+  /* Tagesüberschrift ohne Monat/Jahr (die stehen bereits in der Kalender-Kopfzeile). */
+  const dayTitle = d => `${WD_FULL[wdIndexMon(d)]}, der ${d.getDate()}.`;
 
   /* ---------- Streak (intern) ---------- */
 
@@ -209,11 +211,15 @@
   }
   function normalizeEvent(raw) {
     if (!raw || typeof raw !== 'object' || !isDateStr(raw.start)) return null;
+    const end = isDateStr(raw.end) ? raw.end : null;
+    const multiDay = raw.multiDay !== undefined ? !!raw.multiDay : !!(end && end > raw.start);
     return {
-      id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start, end: isDateStr(raw.end) ? raw.end : null,
+      id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start,
+      end: multiDay ? (end && end >= raw.start ? end : raw.start) : null,
+      multiDay,
       notes: typeof raw.notes === 'string' ? raw.notes : '',
-      startTime: isTimeStr(raw.startTime) ? raw.startTime : null,
-      endTime: isTimeStr(raw.endTime) ? raw.endTime : null,
+      startTime: multiDay ? null : (isTimeStr(raw.startTime) ? raw.startTime : null),
+      endTime: multiDay ? null : (isTimeStr(raw.endTime) ? raw.endTime : null),
     };
   }
 
@@ -364,6 +370,11 @@
   const eventEnd = e => e.end || e.start;
   const eventSpanLabel = e => (e.end && e.end !== e.start) ? `${fmtShort(e.start)}–${fmtShort(e.end)}` : fmtShort(e.start);
   const eventsCovering = ds => state.events.filter(e => e.start <= ds && ds <= eventEnd(e));
+  /* Neues Event: mehrtägig startet mit einer Standard-Spanne (Tag + 1), eintägig ohne Uhrzeiten. */
+  const makeEvent = (name, start, multiDay) => ({
+    id: uid(), name, start, end: multiDay ? addDays(start, 1) : null, multiDay,
+    notes: '', startTime: null, endTime: null,
+  });
   /* Gantt-Lane-Packung: überlappende Events bekommen verschiedene Zeilen, damit ein
      mehrtägiger Balken über die Tage in derselben Zeile durchläuft. */
   function assignLanes(events) {
@@ -390,10 +401,12 @@
   let activeEventId = null;
   let stepTab = 'aktuell';
   let dashTab = 'offen';
+  let eventTab = 'single';
   let calView = 'tag';
   let calCursor = todayStr();
   let dayStamp = todayStr();
   let refocusSel = null;
+  let pendingEditSel = null;
 
   const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
   const sectionOptions = sel => SECTIONS.map(s => `<option value="${s.key}"${s.key === sel ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
@@ -705,17 +718,22 @@
       const subRows = a.subs.length ? `<ul class="dash-subs">${a.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>` : '';
       return `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>${subRows}`;
     }).join('');
-    return `<div class="col-notes">
-      <div class="col-head">Event</div>
-      <button class="ctx-title ctx-title-link" data-action="open-event-month" data-id="${e.id}" title="Im Kalender anzeigen">${esc(e.name)}</button>
-      <div class="meta-row">
+    const dateFields = e.multiDay
+      ? `<div class="meta-row">
         <label class="date-field">Von<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
         <label class="date-field">Bis<input type="date" data-field="ev-end" data-id="${e.id}" value="${e.end || ''}"></label>
+      </div>`
+      : `<div class="meta-row">
+        <label class="date-field">Datum<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
       </div>
       <div class="meta-row">
         <label class="date-field">Uhrzeit von<input type="time" data-field="ev-start-time" data-id="${e.id}" value="${e.startTime || ''}"></label>
         <label class="date-field">Uhrzeit bis<input type="time" data-field="ev-end-time" data-id="${e.id}" value="${e.endTime || ''}"></label>
-      </div>
+      </div>`;
+    return `<div class="col-notes">
+      <div class="col-head">Event · ${e.multiDay ? 'mehrtägig' : 'eintägig'}</div>
+      <button class="ctx-title ctx-title-link" data-action="open-event-month" data-id="${e.id}" title="Im Kalender anzeigen">${esc(e.name)}</button>
+      ${dateFields}
       <div class="ctx-block">
         <div class="ctx-label">Tagesaufgaben</div>
         <ul class="items">${taskRows}</ul>
@@ -729,12 +747,21 @@
   }
 
   function renderEvents() {
-    const events = state.events.slice().sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+    const wantMulti = eventTab === 'multi';
+    const events = state.events.slice()
+      .filter(e => !!e.multiDay === wantMulti)
+      .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
     const active = activeEventId ? events.find(e => e.id === activeEventId) : null;
-    const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : '<div class="empty">— keine Events —</div>';
+    const singleCount = state.events.filter(e => !e.multiDay).length;
+    const multiCount = state.events.filter(e => e.multiDay).length;
+    const tabs = `<div class="step-tabs">
+      <button data-action="event-tab" data-tab="single" class="${eventTab === 'single' ? 'active' : ''}">Eintägig<span class="seg-count">${singleCount}</span></button>
+      <button data-action="event-tab" data-tab="multi" class="${eventTab === 'multi' ? 'active' : ''}">Mehrtägig<span class="seg-count">${multiCount}</span></button>
+    </div>`;
+    const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : `<div class="empty">— keine ${wantMulti ? 'mehrtägigen' : 'eintägigen'} Events —</div>`;
     return `<div class="ev-board${active ? ' detail has-active' : ''}">
       ${active ? '<div class="detail-bar"><button class="back" data-action="close-event">← Übersicht</button></div>' : ''}
-      <div class="ev-list">${list}${addMini('add-event', 'Neues Event')}</div>
+      <div class="ev-list">${tabs}${list}${addMini('add-event', wantMulti ? 'Neues mehrtägiges Event' : 'Neues eintägiges Event')}</div>
       ${active ? renderEventContext(active) : ''}
     </div>`;
   }
@@ -807,7 +834,7 @@
       const items = byDate[ds] || [];
       const chips = items.slice(0, 2).map(e => `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
       const more = items.length > 2 ? `<div class="cal-more">+${items.length - 2} mehr</div>` : '';
-      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span>${bars}${chips}${more}</div>`;
+      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span><button class="cal-add" data-action="cal-add-event" data-date="${ds}" aria-label="Event hinzufügen" title="Event hinzufügen">${ICONS.plus}</button>${bars}${chips}${more}</div>`;
     }
     return `<div class="cal-grid">${weekdays}${cells}</div>`;
   }
@@ -829,7 +856,7 @@
     const group = (label, arr) => arr.length ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
     const evGroup = evCover.length ? `<div class="day-group"><div class="day-group-label">Events</div><ul class="items">${evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}${eventTimeLabel(e, calCursor) ? ` · ${eventTimeLabel(e, calCursor)}` : ''}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`).join('')}</ul></div>` : '';
     const body = (evCover.length || markers.length || steps.length || tasks.length) ? evGroup + group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
-    return `<div class="day-view"><div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>${body}
+    return `<div class="day-view"><div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>${body}
       <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}"><input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form></div>`;
   }
 
@@ -909,7 +936,7 @@
     </div>`;
 
     return `<div class="dashboard">
-      <div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>
+      <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
       ${termine}
       ${topBox}
       ${overdueBox}
@@ -947,6 +974,7 @@
     for (const btn of tabbar.querySelectorAll('.tab')) btn.classList.toggle('active', btn.dataset.tab === activeTab);
     view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : renderLists();
     if (refocusSel) { const el = view.querySelector(refocusSel); if (el) el.focus(); refocusSel = null; }
+    if (pendingEditSel) { const el = view.querySelector(pendingEditSel); pendingEditSel = null; if (el) startEdit(el); }
   }
 
   /* ---------- Inline-Umbenennen ---------- */
@@ -1008,9 +1036,11 @@
 
       case 'open-event': if (id !== activeEventId) activeEventId = id; else return; break;
       case 'close-event': activeEventId = null; break;
+      case 'event-tab': eventTab = el.dataset.tab === 'multi' ? 'multi' : 'single'; activeEventId = null; break;
       case 'del-event': { const ev = state.events.find(x => x.id === id); if (!ev || !confirm(`Event „${ev.name}" löschen?`)) return; state.events = state.events.filter(x => x.id !== id); if (id === activeEventId) activeEventId = null; break; }
-      case 'open-event-cal': activeTab = 'quests'; questCat = 'events'; activeEventId = id; activeQuestId = null; activeStepId = null; break;
+      case 'open-event-cal': { const ev = state.events.find(x => x.id === id); activeTab = 'quests'; questCat = 'events'; eventTab = ev && ev.multiDay ? 'multi' : 'single'; activeEventId = id; activeQuestId = null; activeStepId = null; break; }
       case 'open-event-month': { const ev = state.events.find(x => x.id === id); if (!ev) return; activeTab = 'calendar'; calView = 'monat'; calCursor = ev.start; break; }
+      case 'cal-add-event': { const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); const ev = makeEvent('Neues Event', date, false); state.events.push(ev); activeTab = 'quests'; questCat = 'events'; eventTab = 'single'; activeEventId = ev.id; activeQuestId = null; activeStepId = null; pendingEditSel = '.ev-name.editable'; break; }
 
       case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; stepTab = 'aktuell'; } else return; break;
       case 'close-quest': activeQuestId = null; activeStepId = null; break;
@@ -1144,7 +1174,7 @@
         refocusSel = `form[data-action="dash-add-qsub"][data-quest="${q.id}"][data-step="${s.id}"] input`;
         break;
       }
-      case 'add-event': { const ev = { id: uid(), name: text, start: todayStr(), end: null, notes: '' }; state.events.push(ev); activeEventId = ev.id; break; }
+      case 'add-event': { const ev = makeEvent(text, todayStr(), eventTab === 'multi'); state.events.push(ev); activeEventId = ev.id; break; }
       case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
       case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
       default: return;
