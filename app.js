@@ -319,7 +319,7 @@
     return `<div class="time-row"><span>${fmtShort(start)}</span><div class="track${over ? ' over' : ''}"><div class="fill time-fill" style="width:${pct}%"></div><div class="mark" style="left:${pct}%"></div></div><span>${fmtShort(q.deadline)}</span></div>`;
   }
 
-  const catField = q => `<label class="sel-field">Reiter<select data-sel="cat" data-id="${q.id}">${catOptions(q.category)}</select></label>`;
+  const catField = q => `<label class="sel-field"><span class="sel-label">Reiter</span><select data-sel="cat" data-id="${q.id}">${catOptions(q.category)}</select></label>`;
   const progressRow = q => { const { done, total } = questLeaves(q); return total ? `<div class="progress-row"><span class="pcount">${done}/${total}</span><div class="track"><div class="fill" style="width:${questPct(q)}%"></div></div><span class="pct">${questPct(q)}%</span></div>` : ''; };
 
   function renderQuestMeta(q) {
@@ -331,8 +331,8 @@
     return `<div class="qmeta">
       <div class="meta-row">
         ${catField(q)}
-        <label class="sel-field">Bereich<select data-sel="section" data-id="${q.id}">${sectionOptions(q.section)}</select></label>
-        <label class="sel-field">Typ<select data-sel="type" data-id="${q.id}">${typeOptions(q.type)}</select></label>
+        <label class="sel-field"><span class="sel-label">Bereich</span><select data-sel="section" data-id="${q.id}">${sectionOptions(q.section)}</select></label>
+        <label class="sel-field"><span class="sel-label">Typ</span><select data-sel="type" data-id="${q.id}">${typeOptions(q.type)}</select></label>
         ${laufend ? '' : `<button class="chip prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>`}
       </div>
       ${laufend ? '' : `<div class="meta-row">
@@ -536,7 +536,7 @@
         <div class="col-head">Kontext · Schritt<button class="ctx-up" data-action="deselect-step">↑ Quest</button></div>
         <div class="ctx-title">${esc(step.text)}</div>
         <div class="meta-row">
-          <label class="sel-field">Typ<select data-sel="step-type" data-quest="${q.id}" data-id="${step.id}">${typeOptions(step.type)}</select></label>
+          <label class="sel-field"><span class="sel-label">Typ</span><select data-sel="step-type" data-quest="${q.id}" data-id="${step.id}">${typeOptions(step.type)}</select></label>
           ${laufend ? '' : `<label class="date-field">Termin<input type="date" data-field="step-deadline" data-quest="${q.id}" data-id="${step.id}" value="${step.deadline || ''}"></label>`}
         </div>
         <button class="ctx-toggle${isNext ? ' on' : ''}" data-action="toggle-next" data-quest="${q.id}" data-id="${step.id}">${isNext ? '✓ Nächster Schritt' : 'Als nächsten Schritt'}</button>

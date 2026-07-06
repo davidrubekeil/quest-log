@@ -255,6 +255,8 @@ input { font: inherit; color: inherit; }
   color: var(--muted);
 }
 
+.sel-label { flex: none; width: 52px; }
+
 .sel-field select {
   font-family: var(--mono);
   font-size: 12px;
