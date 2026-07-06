@@ -58,6 +58,7 @@
   const timeHM = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 
   const isDateStr = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const isTimeStr = s => typeof s === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
   const parseDate = ds => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d); };
   const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 864e5);
   const daysUntil = ds => dayDiff(todayStr(), ds);
@@ -95,7 +96,7 @@
 
   /* ---------- Unterschritt (rekursiv, simpel) ---------- */
 
-  const newSub = text => ({ id: uid(), text, done: false, doneAt: null, subs: [], open: false });
+  const newSub = text => ({ id: uid(), text, done: false, doneAt: null, subs: [], open: false, scheduledDate: null });
   const subDone = s => s.subs.length ? s.subs.every(subDone) : !!s.done;
   const subLeaves = s => s.subs.length
     ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
@@ -162,7 +163,7 @@
 
   /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: [] });
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -175,7 +176,7 @@
   function normalizeSub(raw) {
     if (typeof raw === 'string') return newSub(raw);
     if (!raw || typeof raw !== 'object') return null;
-    return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done, doneAt: raw.doneAt || null, subs: kidsOf(raw).map(normalizeSub).filter(Boolean), open: !!raw.open };
+    return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done, doneAt: raw.doneAt || null, subs: kidsOf(raw).map(normalizeSub).filter(Boolean), open: !!raw.open, scheduledDate: isDateStr(raw.scheduledDate) ? raw.scheduledDate : null };
   }
   function normalizeStep(raw) {
     if (typeof raw === 'string') return newStep(raw);
@@ -194,13 +195,26 @@
     if (!raw || typeof raw !== 'object') return null;
     return { id: raw.id || uid(), text: String(raw.text ?? ''), deadline: isDateStr(raw.deadline) ? raw.deadline : null };
   }
+  function normalizeAgendaSub(raw) {
+    if (typeof raw === 'string') return { id: uid(), text: raw, done: false, doneAt: null };
+    if (!raw || typeof raw !== 'object') return null;
+    return { id: raw.id || uid(), text: String(raw.text ?? ''), done: !!raw.done, doneAt: raw.doneAt || null };
+  }
   function normalizeAgenda(raw) {
     if (!raw || typeof raw !== 'object' || !isDateStr(raw.date)) return null;
-    return { id: raw.id || uid(), text: String(raw.text ?? ''), date: raw.date, done: !!raw.done, doneAt: raw.doneAt || null };
+    return {
+      id: raw.id || uid(), text: String(raw.text ?? ''), date: raw.date, done: !!raw.done, doneAt: raw.doneAt || null,
+      subs: (Array.isArray(raw.subs) ? raw.subs : []).map(normalizeAgendaSub).filter(Boolean),
+    };
   }
   function normalizeEvent(raw) {
     if (!raw || typeof raw !== 'object' || !isDateStr(raw.start)) return null;
-    return { id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start, end: isDateStr(raw.end) ? raw.end : null, notes: typeof raw.notes === 'string' ? raw.notes : '' };
+    return {
+      id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start, end: isDateStr(raw.end) ? raw.end : null,
+      notes: typeof raw.notes === 'string' ? raw.notes : '',
+      startTime: isTimeStr(raw.startTime) ? raw.startTime : null,
+      endTime: isTimeStr(raw.endTime) ? raw.endTime : null,
+    };
   }
 
   function sanitizeState(raw) {
@@ -237,7 +251,19 @@
     if (Array.isArray(raw.agenda)) s.agenda = raw.agenda.map(normalizeAgenda).filter(Boolean);
     if (Array.isArray(raw.events)) s.events = raw.events.map(normalizeEvent).filter(Boolean);
     if (typeof raw.focusQuestId === 'string') s.focusQuestId = raw.focusQuestId;
+
+    if (Array.isArray(raw.topTasks)) {
+      s.topTasks = raw.topTasks.filter(t => t && typeof t === 'object' && taskRefExists(s, t)).slice(0, 3);
+    }
     return s;
+  }
+
+  /* prüft, ob eine Top-Aufgaben-Referenz noch auf einen echten Datensatz zeigt */
+  function taskRefExists(s, t) {
+    if (t.kind === 'qstep') { const q = s.quests.find(q => q.id === t.questId); const st = q && findStep(q, t.stepId); return !!st; }
+    if (t.kind === 'qsub') { const q = s.quests.find(q => q.id === t.questId); const st = q && findStep(q, t.stepId); const sub = st && findSubRec(st.subs, t.subId); return !!sub; }
+    if (t.kind === 'agenda') return s.agenda.some(a => a.id === t.id);
+    return false;
   }
 
   function loadState() {
@@ -268,6 +294,70 @@
     return out;
   }
   function entriesByDate() { const map = {}; for (const e of collectEntries()) (map[e.date] || (map[e.date] = [])).push(e); return map; }
+
+  /* ---------- Dashboard (Tagesstartseite) ---------- */
+
+  function taskKey(t) {
+    if (t.kind === 'qstep') return `qstep:${t.questId}:${t.stepId}`;
+    if (t.kind === 'qsub') return `qsub:${t.questId}:${t.stepId}:${t.subId}`;
+    if (t.kind === 'agenda') return `agenda:${t.id}`;
+    return '';
+  }
+  const isStarred = t => state.topTasks.some(x => taskKey(x) === taskKey(t));
+
+  /* Container-Schritte (mit Unterschritten), deren Frist auf dateStr fällt — rein informativ, klickbar zur Quest. */
+  function collectDayDeadlineSteps(dateStr) {
+    const out = [];
+    for (const q of state.quests) {
+      if (q.category === 'skill') continue;
+      for (const s of q.steps) {
+        if (s.deadline === dateStr && s.type !== 'laufend' && stepHasSubs(s) && !stepDone(s)) {
+          out.push({ questId: q.id, stepId: s.id, text: s.text, questTitle: q.title });
+        }
+      }
+    }
+    return out;
+  }
+
+  function walkSubsMatching(subs, questId, stepId, questTitle, dateMatches, out) {
+    for (const sub of subs) {
+      if (sub.scheduledDate && !subDone(sub) && dateMatches(sub.scheduledDate)) {
+        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, done: false, subs: sub.subs, refDate: sub.scheduledDate });
+      }
+      walkSubsMatching(sub.subs, questId, stepId, questTitle, dateMatches, out);
+    }
+  }
+  /* Einheitliche Aufgaben-Liste: Quest-Blätter (Frist), Quest-Unterschritte (geplant) und Tagesaufgaben. */
+  function collectTasksMatching(dateMatches) {
+    const out = [];
+    for (const q of state.quests) {
+      if (q.category === 'skill') continue;
+      for (const s of q.steps) {
+        if (s.type === 'laufend') continue;
+        if (!stepHasSubs(s) && s.deadline && !s.done && dateMatches(s.deadline)) {
+          out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: false, refDate: s.deadline });
+        }
+        walkSubsMatching(s.subs, q.id, s.id, q.title, dateMatches, out);
+      }
+    }
+    for (const a of state.agenda) {
+      if (!a.done && dateMatches(a.date)) out.push({ kind: 'agenda', id: a.id, text: a.text, done: false, subs: a.subs, refDate: a.date });
+    }
+    return out;
+  }
+  const collectDayTasks = dateStr => collectTasksMatching(d => d === dateStr);
+  const collectOverdueTasks = beforeDateStr => collectTasksMatching(d => d < beforeDateStr)
+    .map(t => ({ ...t, overdueDays: dayDiff(t.refDate, beforeDateStr) }))
+    .sort((a, b) => b.overdueDays - a.overdueDays);
+
+  /* Zeit-Label für Events in der Termine-Zeile (an-/abwesende Uhrzeiten je nach Tagesrand). */
+  function eventTimeLabel(e, ds) {
+    const isStart = ds === e.start, isEnd = ds === eventEnd(e);
+    if (isStart && isEnd) return e.startTime && e.endTime ? `${e.startTime}–${e.endTime}` : e.startTime ? `ab ${e.startTime}` : '';
+    if (isStart) return e.startTime ? `ab ${e.startTime}` : '';
+    if (isEnd) return e.endTime ? `bis ${e.endTime}` : '';
+    return '';
+  }
 
   const eventEnd = e => e.end || e.start;
   const eventSpanLabel = e => (e.end && e.end !== e.start) ? `${fmtShort(e.start)}–${fmtShort(e.end)}` : fmtShort(e.start);
@@ -608,13 +698,20 @@
 
   function renderEventContext(e) {
     const tasks = state.agenda.filter(a => a.date >= e.start && a.date <= eventEnd(e)).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
-    const taskRows = tasks.map(a => `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+    const taskRows = tasks.map(a => {
+      const subRows = a.subs.length ? `<ul class="dash-subs">${a.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${a.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>` : '';
+      return `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>${subRows}`;
+    }).join('');
     return `<div class="col-notes">
       <div class="col-head">Event</div>
       <button class="ctx-title ctx-title-link" data-action="open-event-month" data-id="${e.id}" title="Im Kalender anzeigen">${esc(e.name)}</button>
       <div class="meta-row">
         <label class="date-field">Von<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
         <label class="date-field">Bis<input type="date" data-field="ev-end" data-id="${e.id}" value="${e.end || ''}"></label>
+      </div>
+      <div class="meta-row">
+        <label class="date-field">Uhrzeit von<input type="time" data-field="ev-start-time" data-id="${e.id}" value="${e.startTime || ''}"></label>
+        <label class="date-field">Uhrzeit bis<input type="time" data-field="ev-end-time" data-id="${e.id}" value="${e.endTime || ''}"></label>
       </div>
       <div class="ctx-block">
         <div class="ctx-label">Tagesaufgaben</div>
@@ -719,7 +816,7 @@
     return `<li class="row marker"><span class="cdot" style="background:${DOT[e.kind]}"></span><button class="marker-link" data-action="open-quest-from-cal" data-id="${e.questId}">${esc(e.text)}${e.kind !== 'quest' ? ` · ${esc(e.questTitle)}` : ''}</button><span class="marker-tag">${tag}</span></li>`;
   }
 
-  function renderDay(byDate) {
+  function renderPlainDay(byDate) {
     const items = byDate[calCursor] || [];
     const markers = items.filter(e => !e.checkable);
     const steps = items.filter(e => e.kind === 'step');
@@ -727,11 +824,88 @@
     const d = parseDate(calCursor);
     const evCover = eventsCovering(calCursor);
     const group = (label, arr) => arr.length ? `<div class="day-group"><div class="day-group-label">${label}</div><ul class="items">${arr.map(calEntryRow).join('')}</ul></div>` : '';
-    const evGroup = evCover.length ? `<div class="day-group"><div class="day-group-label">Events</div><ul class="items">${evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`).join('')}</ul></div>` : '';
+    const evGroup = evCover.length ? `<div class="day-group"><div class="day-group-label">Events</div><ul class="items">${evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}${eventTimeLabel(e, calCursor) ? ` · ${eventTimeLabel(e, calCursor)}` : ''}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`).join('')}</ul></div>` : '';
     const body = (evCover.length || markers.length || steps.length || tasks.length) ? evGroup + group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
     return `<div class="day-view"><div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>${body}
       <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}"><input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form></div>`;
   }
+
+  /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
+
+  function dashTaskRow(t, opts = {}) {
+    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true } = opts;
+    const checkAttr = t.kind === 'qstep' ? `data-action="toggle-step" data-quest="${t.questId}" data-id="${t.stepId}"`
+      : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
+      : `data-action="toggle-agenda" data-id="${t.id}"`;
+    const questTag = (t.kind === 'qstep' || t.kind === 'qsub') ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '';
+    const overdueTag = t.overdueDays ? `<span class="dash-overdue-tag">seit ${t.overdueDays} ${t.overdueDays === 1 ? 'Tag' : 'Tagen'} überfällig</span>` : '';
+    const starAttr = `data-kind="${t.kind}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
+    const star = starButton ? `<button class="star${isStarred(t) ? ' active' : ''}" data-action="toggle-star" ${starAttr}${!canStar ? ' disabled' : ''} aria-label="Als Top-Aufgabe markieren">${ICONS.star}</button>` : '';
+    const arrows = arrowsLen > 1 ? `<span class="arrows">
+        <button class="arrow-up" data-action="topTask-up" data-index="${arrowIndex}"${arrowIndex === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
+        <button class="arrow-down" data-action="topTask-down" data-index="${arrowIndex}"${arrowIndex === arrowsLen - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
+      </span>` : '';
+    const subForm = t.kind === 'agenda'
+      ? addMini('dash-add-agenda-sub', 'Unterschritt', ` data-agenda="${t.id}"`)
+      : addMini('dash-add-qsub', 'Unterschritt', ` data-quest="${t.questId}" data-step="${t.stepId}"${t.kind === 'qsub' ? ` data-parent="${t.subId}"` : ''}`);
+    const subsList = (t.kind === 'agenda' && t.subs && t.subs.length)
+      ? `<ul class="dash-subs">${t.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>`
+      : '';
+    return `<li class="dash-task${t.done ? ' done' : ''}">
+      <div class="row">
+        <button class="checkbox" ${checkAttr} aria-label="Abhaken">${ICONS.check}</button>
+        <span class="row-text">${esc(t.text)}</span>
+        ${questTag}${overdueTag}${star}${arrows}
+      </div>
+      ${subsList}${subForm}
+    </li>`;
+  }
+
+  function resolveTopTask(ref) {
+    if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s) }; }
+    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub) }; }
+    if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs }; }
+    return null;
+  }
+
+  function renderTodayDashboard() {
+    const today = todayStr();
+    const d = parseDate(today);
+    const evCover = eventsCovering(today);
+    const deadlineSteps = collectDayDeadlineSteps(today);
+    const termineRows = [
+      ...evCover.map(e => `<li class="row marker"><span class="cdot" style="background:${EVENT_COLOR}"></span><button class="marker-link" data-action="open-event-cal" data-id="${e.id}">${esc(e.name)}${eventTimeLabel(e, today) ? ` · ${eventTimeLabel(e, today)}` : ''}</button><span class="marker-tag">${eventSpanLabel(e)}</span></li>`),
+      ...deadlineSteps.map(s => `<li class="row marker"><span class="cdot" style="background:${DOT.branch}"></span><button class="marker-link" data-action="open-quest-from-cal" data-id="${s.questId}">${esc(s.text)} · ${esc(s.questTitle)}</button><span class="marker-tag">Frist</span></li>`),
+    ].join('');
+    const termine = termineRows ? `<div class="dash-termine"><ul class="items">${termineRows}</ul></div>` : '';
+
+    const topRefs = state.topTasks.map(resolveTopTask).filter(Boolean);
+    const topKeys = new Set(topRefs.map(taskKey));
+    const allTasks = collectDayTasks(today).filter(t => !topKeys.has(taskKey(t)));
+    const overdue = collectOverdueTasks(today).filter(t => !topKeys.has(taskKey(t)));
+    const canStar = state.topTasks.length < 3;
+
+    const topBox = `<div class="dash-top"><div class="dash-label">Top-Aufgaben${topRefs.length ? '' : ' <span class="dash-hint">— mit ★ markieren</span>'}</div>
+      ${topRefs.length ? `<ul class="items">${topRefs.map((t, i) => dashTaskRow(t, { arrowIndex: i, arrowsLen: topRefs.length })).join('')}</ul>` : ''}
+    </div>`;
+
+    const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { canStar })).join('')}</ul></div>` : '';
+
+    const tasksBox = `<div class="dash-tasks"><div class="dash-label">Aufgaben heute</div>
+      ${allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>'}
+      <form class="add-row add-agenda" data-action="add-agenda" data-date="${today}"><input type="text" placeholder="Aufgabe für heute …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+    </div>`;
+
+    return `<div class="dashboard">
+      <div class="day-head"><span class="day-title">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</span></div>
+      ${termine}
+      ${topBox}
+      ${overdueBox}
+      ${tasksBox}
+    </div>`;
+  }
+
+  function renderDay(byDate) { return calCursor === todayStr() ? renderTodayDashboard() : renderPlainDay(byDate); }
 
   function renderCalendar() {
     const byDate = entriesByDate();
@@ -857,6 +1031,21 @@
       case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; activeTab = 'quests'; questCat = q.done ? 'erledigt' : q.category; activeQuestId = q.done ? null : q.id; activeStepId = null; stepTab = 'aktuell'; break; }
       case 'toggle-agenda': { const a = state.agenda.find(a => a.id === id); if (!a) return; a.done = !a.done; a.doneAt = a.done ? nowISO() : null; break; }
       case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); break;
+      case 'toggle-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); const sub = a && a.subs.find(s => s.id === id); if (!sub) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; break; }
+      case 'del-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); if (a) a.subs = a.subs.filter(s => s.id !== id); break; }
+
+      case 'toggle-star': {
+        const ds = el.dataset;
+        const ref = ds.kind === 'agenda' ? { kind: 'agenda', id: ds.id } : { kind: ds.kind, questId: ds.quest, stepId: ds.step, subId: ds.sub || undefined };
+        const k = taskKey(ref);
+        const i = state.topTasks.findIndex(t => taskKey(t) === k);
+        if (i >= 0) state.topTasks.splice(i, 1);
+        else if (state.topTasks.length < 3) state.topTasks.push(ref);
+        else return;
+        break;
+      }
+      case 'topTask-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.topTasks[i - 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i - 1]]; break; }
+      case 'topTask-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.topTasks.length - 1) return; [state.topTasks[i + 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i + 1]]; break; }
 
       case 'toggle-list': { const l = state.lists.find(l => l.id === id); if (l) l.open = !l.open; break; }
       case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
@@ -876,6 +1065,13 @@
       if (sel.dataset.sel === 'cat') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q && CATS.some(c => c.key === sel.value)) { q.category = sel.value; questCat = sel.value; activeStepId = null; } }
       else if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
       else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; }
+      save(); render(); return;
+    }
+    const timeInput = e.target.closest('input[type="time"][data-field]');
+    if (timeInput) {
+      const tf = timeInput.dataset.field, tv = isTimeStr(timeInput.value) ? timeInput.value : null;
+      const ev = state.events.find(x => x.id === timeInput.dataset.id);
+      if (ev) { if (tf === 'ev-start-time') ev.startTime = tv; else if (tf === 'ev-end-time') ev.endTime = tv; }
       save(); render(); return;
     }
     const input = e.target.closest('input[type="date"][data-field]');
@@ -920,7 +1116,21 @@
         break;
       }
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
-      case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); state.agenda.push({ id: uid(), text, date, done: false, doneAt: null }); refocusSel = `form[data-action="add-agenda"] input`; break; }
+      case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [] }); refocusSel = `form[data-action="add-agenda"] input`; break; }
+      case 'dash-add-agenda-sub': { const a = state.agenda.find(a => a.id === form.dataset.agenda); if (!a) return; a.subs.push({ id: uid(), text, done: false, doneAt: null }); refocusSel = `form[data-action="dash-add-agenda-sub"][data-agenda="${a.id}"] input`; break; }
+      case 'dash-add-qsub': {
+        const q = state.quests.find(q => q.id === form.dataset.quest);
+        const s = q && findStep(q, form.dataset.step);
+        if (!s) return;
+        const parent = form.dataset.parent ? findSubRec(s.subs, form.dataset.parent) : null;
+        const sub = newSub(text);
+        sub.scheduledDate = todayStr();
+        (parent ? parent.subs : s.subs).push(sub);
+        if (parent) parent.done = false; else s.done = false;
+        syncQuestDone(q);
+        refocusSel = `form[data-action="dash-add-qsub"][data-quest="${q.id}"][data-step="${s.id}"] input`;
+        break;
+      }
       case 'add-event': { const ev = { id: uid(), name: text, start: todayStr(), end: null, notes: '' }; state.events.push(ev); activeEventId = ev.id; break; }
       case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
       case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }

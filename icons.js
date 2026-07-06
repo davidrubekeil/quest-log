@@ -11,6 +11,7 @@ const ICONS = (() => {
     plus: svg('<path d="M12 5v14M5 12h14"/>'),
     x: svg('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
     chevron: svg('<path d="M6 9.5l6 6 6-6"/>'),
+    star: svg('<path d="M12 4l2.3 5.7 6.1.5-4.6 4 1.4 6-5.2-3.3-5.2 3.3 1.4-6-4.6-4 6.1-.5z"/>'),
 
     /* Haken für die Checkbox — bewusst kräftigerer Strich */
     check:

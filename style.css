@@ -962,3 +962,80 @@ input { font: inherit; color: inherit; }
 .node.arch.context > .node-row .row-text { color: var(--muted); }
 .node.arch .branch-mark { color: var(--muted); }
 .node.arch > .node-row .row-text { cursor: default; }
+
+/* ---------- Tagesstartseite: Productivity-Dashboard ---------- */
+
+.dashboard { max-width: 620px; }
+.dashboard .day-head { margin-bottom: 14px; }
+
+.dash-termine { margin-bottom: 18px; }
+.dash-termine .items { list-style: none; }
+
+.dash-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.dash-label.warn { color: var(--red); }
+.dash-hint { text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--muted); }
+
+.dash-top, .dash-overdue, .dash-tasks { margin-top: 20px; }
+.dash-top {
+  padding: 12px 14px;
+  background: var(--hair);
+  border: 1px solid var(--rule);
+}
+.dash-overdue {
+  padding: 10px 14px;
+  border: 1px solid var(--red);
+  border-left-width: 3px;
+}
+
+.dash-task { list-style: none; margin-bottom: 4px; }
+.dash-task .row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.dash-task.done .row-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--rule); }
+
+.dash-tag {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  padding: 2px 7px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.dash-tag:hover { color: var(--ink); border-color: var(--muted); }
+
+.dash-overdue-tag {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--red);
+}
+
+.star {
+  flex: none;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--rule);
+  transition: color 0.12s;
+}
+.star .ico { width: 14px; height: 14px; }
+.star:hover { color: var(--muted); }
+.star.active { color: #C9A24B; }
+.star.active .ico { fill: currentColor; }
+.star:disabled { opacity: 0.3; pointer-events: none; }
+
+.arrows { flex: none; display: flex; gap: 2px; }
+.arrows button { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.arrows button .ico { width: 10px; height: 10px; }
+.arrow-up .ico { transform: rotate(180deg); }
+.arrows button:hover:not(:disabled) { color: var(--ink); }
+.arrows button:disabled { opacity: 0.25; }
+
+.dash-subs { list-style: none; margin: 2px 0 4px 26px; }
+.dash-subs .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+
+.dash-tasks form.add-row { margin-top: 12px; }
