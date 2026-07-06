@@ -909,6 +909,20 @@
 
   /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
 
+  /* Unterschritte eines terminierten Schrittes als verschachtelte Teilaufgaben der Tagesaufgabe.
+     Erledigte werden ausgeblendet (wie in der Quest-Aktuell-Ansicht); Blätter abhakbar, Zwischen-
+     ebenen mit Fortschrittsmarke. Abhaken/Umbenennen/Löschen wirken direkt in die Quest zurück. */
+  function dashSubTree(subs, questId, stepId) {
+    return subs.filter(s => !subDone(s)).map(sub => {
+      const hasKids = sub.subs.length > 0;
+      const { done, total } = subLeaves(sub);
+      const control = hasKids
+        ? `<span class="branch-mark dash-branch">${done}/${total}</span>`
+        : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
+      return `<li class="row">${control}<span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span><button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>${hasKids ? `<ul class="dash-subs">${dashSubTree(sub.subs, questId, stepId)}</ul>` : ''}`;
+    }).join('');
+  }
+
   function dashTaskRow(t, opts = {}) {
     const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true, taskActions = false, date = todayStr() } = opts;
     const nextDate = addDays(date, 1);
@@ -919,7 +933,7 @@
       : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
       : `data-action="toggle-agenda" data-id="${t.id}"`;
     const control = isBranch
-      ? `<span class="branch-mark dash-branch" title="Teil-Aufgaben im Quest abhaken">${branchLeaves.done}/${branchLeaves.total}</span>`
+      ? `<span class="branch-mark dash-branch" title="Teilaufgaben unten abhaken">${branchLeaves.done}/${branchLeaves.total}</span>`
       : `<button class="checkbox" ${checkAttr} aria-label="Abhaken">${ICONS.check}</button>`;
     // Namen umbenennbar (nutzt die bestehende Edit-Mechanik je nach Aufgaben-Typ).
     const editAttr = t.kind === 'qstep' ? `data-edit="step-text" data-quest="${t.questId}" data-id="${t.stepId}"`
@@ -946,7 +960,7 @@
       : addMini('dash-add-qsub', 'Unterschritt', ` data-quest="${t.questId}" data-step="${t.stepId}"${t.kind === 'qsub' ? ` data-parent="${t.subId}"` : ''}`);
     const subsList = (t.kind === 'agenda' && t.subs && t.subs.length)
       ? `<ul class="dash-subs">${t.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>`
-      : '';
+      : (isBranch ? `<ul class="dash-subs">${dashSubTree(t.subs, t.questId, t.stepId)}</ul>` : '');
     return `<li class="dash-task${t.done ? ' done' : ''}">
       <div class="row">
         ${control}
