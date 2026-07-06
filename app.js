@@ -601,7 +601,7 @@
     return `<div class="evrow${isActive ? ' active' : ''}" data-action="open-event" data-id="${e.id}">
       <span class="ev-dot" style="background:${EVENT_COLOR}"></span>
       <span class="ev-date">${eventSpanLabel(e)}</span>
-      <span class="ev-name${isActive ? ' editable' : ''}"${isActive ? ` data-edit="ev-name" data-id="${e.id}"` : ''}>${esc(e.name)}</span>
+      <span class="ev-name${isActive ? ' editable' : ''}" data-action="open-event-month" data-id="${e.id}"${isActive ? ` data-edit="ev-name"` : ''} title="Im Kalender anzeigen">${esc(e.name)}</span>
       <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Event löschen">${ICONS.x}</button>
     </div>`;
   }
@@ -824,6 +824,7 @@
       case 'close-event': activeEventId = null; break;
       case 'del-event': { const ev = state.events.find(x => x.id === id); if (!ev || !confirm(`Event „${ev.name}" löschen?`)) return; state.events = state.events.filter(x => x.id !== id); if (id === activeEventId) activeEventId = null; break; }
       case 'open-event-cal': activeTab = 'quests'; questCat = 'events'; activeEventId = id; activeQuestId = null; activeStepId = null; break;
+      case 'open-event-month': { const ev = state.events.find(x => x.id === id); if (!ev) return; activeTab = 'calendar'; calView = 'monat'; calCursor = ev.start; break; }
 
       case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; stepTab = 'aktuell'; } else return; break;
       case 'close-quest': activeQuestId = null; activeStepId = null; break;
