@@ -601,7 +601,7 @@
     return `<div class="evrow${isActive ? ' active' : ''}" data-action="open-event" data-id="${e.id}">
       <span class="ev-dot" style="background:${EVENT_COLOR}"></span>
       <span class="ev-date">${eventSpanLabel(e)}</span>
-      <span class="ev-name${isActive ? ' editable' : ''}" data-action="open-event-month" data-id="${e.id}"${isActive ? ` data-edit="ev-name"` : ''} title="Im Kalender anzeigen">${esc(e.name)}</span>
+      <span class="ev-name${isActive ? ' editable' : ''}"${isActive ? ` data-edit="ev-name" data-id="${e.id}"` : ''}>${esc(e.name)}</span>
       <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Event löschen">${ICONS.x}</button>
     </div>`;
   }
@@ -611,7 +611,7 @@
     const taskRows = tasks.map(a => `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
     return `<div class="col-notes">
       <div class="col-head">Event</div>
-      <div class="ctx-title">${esc(e.name)}</div>
+      <button class="ctx-title ctx-title-link" data-action="open-event-month" data-id="${e.id}" title="Im Kalender anzeigen">${esc(e.name)}</button>
       <div class="meta-row">
         <label class="date-field">Von<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
         <label class="date-field">Bis<input type="date" data-field="ev-end" data-id="${e.id}" value="${e.end || ''}"></label>

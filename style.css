@@ -871,6 +871,8 @@ input { font: inherit; color: inherit; }
 .ctx-block { margin-top: 20px; }
 .ctx-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .ctx-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.ctx-title-link { display: block; text-align: left; transition: color 0.12s; }
+.ctx-title-link:hover { color: var(--blue); text-decoration: underline; }
 .ctx-up { font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); padding: 2px 6px; margin-left: 8px; }
 .ctx-up:hover { color: var(--ink); }
 .ctx-toggle { display: block; width: 100%; text-align: left; border: 1px solid var(--rule); padding: 8px 10px; font-size: 12px; letter-spacing: 0.05em; color: var(--muted); transition: color 0.12s, border-color 0.12s, background 0.12s; }
