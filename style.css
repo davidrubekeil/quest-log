@@ -503,7 +503,7 @@ input { font: inherit; color: inherit; }
   flex: 1;
   min-width: 0;
   font-size: 14px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .done > .row > .row-text,
@@ -888,29 +888,38 @@ input { font: inherit; color: inherit; }
 .sub-schedule-btn .ico { width: 13px; height: 13px; }
 .node-row:hover .sub-schedule-btn { opacity: 0.45; }
 .sub-schedule-btn:hover { opacity: 1; color: var(--blue); }
-/* Kompaktes Datums-Chip im Ruhezustand; natives Datumsfeld beim Überfahren/Fokus */
-.sub-sched { flex: none; position: relative; }
+/* Kompaktes Datums-Chip; Klick öffnet den OS-Datumsdialog. Das native Feld bleibt
+   unsichtbar (aber gerendert, damit showPicker funktioniert) und braucht keinen Platz. */
+.sub-sched { flex: none; position: relative; display: inline-flex; align-items: center; gap: 2px; }
 .sub-sched-chip {
-  display: inline-block;
   font-family: var(--mono);
   font-size: 10px;
   color: var(--blue);
   border: 1px solid var(--rule);
   padding: 1px 5px;
   white-space: nowrap;
+  transition: border-color 0.12s;
 }
+.sub-sched-chip:hover { border-color: var(--blue); }
 .sub-sched-input {
-  display: none;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--blue);
-  background: var(--paper);
-  border: 1px solid var(--blue);
-  padding: 1px 3px;
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 1px; height: 1px;
+  opacity: 0;
+  padding: 0; border: 0; margin: 0;
+  pointer-events: none;
 }
-.node-row:hover .sub-sched-chip, .sub-sched:focus-within .sub-sched-chip { display: none; }
-.node-row:hover .sub-sched-input, .sub-sched:focus-within .sub-sched-input { display: inline-block; }
-.node-row:hover .sub-sched-chip + .sub-sched-input { outline: none; }
+.sub-sched-clear {
+  flex: none;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.sub-sched-clear .ico { width: 10px; height: 10px; }
+.node-row:hover .sub-sched-clear { opacity: 0.4; }
+.sub-sched-clear:hover { opacity: 1; color: var(--red); }
 .node.sub.scheduled > .node-row .chev { color: var(--blue); }
 .next-link { text-align: left; color: var(--blue); font-size: 13px; }
 .next-link:hover { text-decoration: underline; }

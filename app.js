@@ -542,10 +542,17 @@
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const kids = sub.subs.filter(k => !subDone(k));
     // Jeder Unterschritt lässt sich mit Datum als Tagesaufgabe aufs Dashboard legen (bei Skills nicht).
+    // Das native Datumsfeld bleibt unsichtbar; ein Klick öffnet direkt den OS-Datumsdialog (showPicker),
+    // damit in der schmalen Schritt-Spalte kein breites Eingabefeld den Text zerquetscht.
+    const dref = ` data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}"`;
     const schedule = showNext
-      ? (sub.scheduledDate
-        ? `<span class="sub-sched" title="Tagesaufgabe am ${fmtShort(sub.scheduledDate)} — Datum leeren zum Entfernen"><span class="sub-sched-chip">${fmtShort(sub.scheduledDate)}</span><input class="sub-sched-input" type="date" data-field="sub-schedule" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" value="${sub.scheduledDate}"></span>`
-        : `<button class="sub-schedule-btn" data-action="schedule-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Als Tagesaufgabe planen" title="Als Tagesaufgabe aufs Dashboard legen">${ICONS.calendar}</button>`)
+      ? `<span class="sub-sched${sub.scheduledDate ? ' set' : ''}">
+          ${sub.scheduledDate
+            ? `<button type="button" class="sub-sched-chip" data-action="sub-sched-open"${dref} title="Tagesaufgabe am ${fmtShort(sub.scheduledDate)} — Datum ändern">${fmtShort(sub.scheduledDate)}</button>`
+            : `<button type="button" class="sub-schedule-btn" data-action="sub-sched-open"${dref} aria-label="Als Tagesaufgabe planen" title="Als Tagesaufgabe aufs Dashboard legen">${ICONS.calendar}</button>`}
+          <input type="date" class="sub-sched-input" data-field="sub-schedule"${dref} value="${sub.scheduledDate || ''}" tabindex="-1" aria-hidden="true">
+          ${sub.scheduledDate ? `<button class="sub-sched-clear" data-action="sub-sched-clear"${dref} aria-label="Planung entfernen" title="Planung entfernen">${ICONS.x}</button>` : ''}
+        </span>`
       : '';
     return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}${sub.scheduledDate ? ' scheduled' : ''}">
       <div class="node-row">
@@ -1139,7 +1146,8 @@
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
       case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
       case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); syncQuestDone(q); break; }
-      case 'schedule-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.scheduledDate = todayStr(); break; }
+      case 'sub-sched-open': { const inp = el.parentElement.querySelector('.sub-sched-input'); if (inp) { if (typeof inp.showPicker === 'function') { try { inp.showPicker(); } catch (err) { inp.focus(); } } else inp.focus(); } return; }
+      case 'sub-sched-clear': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) { removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); sub.scheduledDate = null; } break; }
 
       case 'del-ms': { const q = state.quests.find(q => q.id === questId); if (q) q.milestones = q.milestones.filter(m => m.id !== id); break; }
 
