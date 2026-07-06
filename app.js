@@ -863,13 +863,25 @@
   /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
 
   function dashTaskRow(t, opts = {}) {
-    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true } = opts;
+    const { starButton = true, arrowIndex = -1, arrowsLen = 0, canStar = true, showSubForm = true, taskActions = false } = opts;
     const checkAttr = t.kind === 'qstep' ? `data-action="toggle-step" data-quest="${t.questId}" data-id="${t.stepId}"`
       : t.kind === 'qsub' ? `data-action="toggle-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
       : `data-action="toggle-agenda" data-id="${t.id}"`;
+    // Namen umbenennbar (nutzt die bestehende Edit-Mechanik je nach Aufgaben-Typ).
+    const editAttr = t.kind === 'qstep' ? `data-edit="step-text" data-quest="${t.questId}" data-id="${t.stepId}"`
+      : t.kind === 'qsub' ? `data-edit="sub-text" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
+      : `data-edit="agenda-text" data-id="${t.id}"`;
+    const delAttr = t.kind === 'qstep' ? `data-action="del-step" data-quest="${t.questId}" data-id="${t.stepId}"`
+      : t.kind === 'qsub' ? `data-action="del-sub" data-quest="${t.questId}" data-step="${t.stepId}" data-id="${t.subId}"`
+      : `data-action="del-agenda" data-id="${t.id}"`;
+    const pushAttr = t.kind === 'qstep' ? `data-kind="qstep" data-quest="${t.questId}" data-step="${t.stepId}"`
+      : t.kind === 'qsub' ? `data-kind="qsub" data-quest="${t.questId}" data-step="${t.stepId}" data-sub="${t.subId}"`
+      : `data-kind="agenda" data-id="${t.id}"`;
     const questTag = (t.kind === 'qstep' || t.kind === 'qsub') ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '';
     const overdueTag = t.overdueDays ? `<span class="dash-overdue-tag">seit ${t.overdueDays} ${t.overdueDays === 1 ? 'Tag' : 'Tagen'} überfällig</span>` : '';
     const starAttr = `data-kind="${t.kind}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
+    const push = taskActions ? `<button class="dash-push" data-action="task-push" ${pushAttr} aria-label="Auf morgen verschieben" title="Auf morgen verschieben">${ICONS.arrowRight}</button>` : '';
+    const del = taskActions ? `<button class="del" ${delAttr} aria-label="Aufgabe löschen">${ICONS.x}</button>` : '';
     const star = starButton ? `<button class="star${isStarred(t) ? ' active' : ''}" data-action="toggle-star" ${starAttr}${!canStar ? ' disabled' : ''} aria-label="Als Top-Aufgabe markieren">${ICONS.star}</button>` : '';
     const arrows = arrowsLen > 1 ? `<span class="arrows">
         <button class="arrow-up" data-action="topTask-up" data-index="${arrowIndex}"${arrowIndex === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
@@ -884,8 +896,8 @@
     return `<li class="dash-task${t.done ? ' done' : ''}">
       <div class="row">
         <button class="checkbox" ${checkAttr} aria-label="Abhaken">${ICONS.check}</button>
-        <span class="row-text">${esc(t.text)}</span>
-        ${questTag}${overdueTag}${star}${arrows}
+        <span class="row-text editable" ${editAttr}>${esc(t.text)}</span>
+        ${questTag}${overdueTag}${push}${del}${star}${arrows}
       </div>
       ${subsList}${subForm}
     </li>`;
@@ -919,14 +931,14 @@
       ${topRefs.length ? `<ul class="items">${topRefs.map((t, i) => dashTaskRow(t, { arrowIndex: i, arrowsLen: topRefs.length })).join('')}</ul>` : ''}
     </div>`;
 
-    const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { canStar })).join('')}</ul></div>` : '';
+    const overdueBox = overdue.length ? `<div class="dash-overdue"><div class="dash-label warn">Überfällig</div><ul class="items">${overdue.map(t => dashTaskRow(t, { canStar, taskActions: true })).join('')}</ul></div>` : '';
 
     const doneTasks = collectDoneDayTasks(today).filter(t => !topKeys.has(taskKey(t)));
     const dashTabs = `<div class="step-tabs">
       <button data-action="dash-tab" data-tab="offen" class="${dashTab === 'offen' ? 'active' : ''}">Offen<span class="seg-count">${allTasks.length}</span></button>
       <button data-action="dash-tab" data-tab="erledigt" class="${dashTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${doneTasks.length}</span></button>
     </div>`;
-    const openList = allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>';
+    const openList = allTasks.length ? `<ul class="items">${allTasks.map(t => dashTaskRow(t, { canStar, taskActions: true })).join('')}</ul>` : '<div class="empty">— keine Aufgaben —</div>';
     const doneList = doneTasks.length ? `<ul class="items">${doneTasks.map(t => dashTaskRow(t, { starButton: false, showSubForm: false })).join('')}</ul>` : '<div class="empty">— nichts erledigt —</div>';
 
     const tasksBox = `<div class="dash-tasks">
@@ -994,6 +1006,7 @@
       case 'sub-text': { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.id); if (sub) sub.text = val; break; }
       case 'ms-text': { const q = state.quests.find(q => q.id === ds.quest); const m = q && q.milestones.find(m => m.id === ds.id); if (m) m.text = val; break; }
       case 'ev-name': { const ev = state.events.find(x => x.id === ds.id); if (ev) ev.name = val; break; }
+      case 'agenda-text': { const a = state.agenda.find(a => a.id === ds.id); if (a) a.text = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
@@ -1089,6 +1102,14 @@
       }
       case 'topTask-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.topTasks[i - 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i - 1]]; break; }
       case 'topTask-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.topTasks.length - 1) return; [state.topTasks[i + 1], state.topTasks[i]] = [state.topTasks[i], state.topTasks[i + 1]]; break; }
+      case 'task-push': {
+        const ds = el.dataset;
+        const next = addDays(todayStr(), 1); // Dashboard zeigt nur heutige/überfällige Aufgaben → nächster Tag = morgen
+        if (ds.kind === 'agenda') { const a = state.agenda.find(a => a.id === ds.id); if (a) a.date = next; }
+        else if (ds.kind === 'qsub') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); const sub = s && findSubRec(s.subs, ds.sub); if (sub) sub.scheduledDate = next; }
+        else if (ds.kind === 'qstep') { const q = state.quests.find(q => q.id === ds.quest); const s = q && findStep(q, ds.step); if (s) s.deadline = next; }
+        break;
+      }
 
       case 'toggle-list': { const l = state.lists.find(l => l.id === id); if (l) l.open = !l.open; break; }
       case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
