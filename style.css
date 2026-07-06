@@ -938,3 +938,23 @@ input { font: inherit; color: inherit; }
   .ev-board.detail .ev-list { padding-right: 0; border-right: none; }
   .ev-board.detail .col-notes { padding-left: 0; }
 }
+
+/* ---------- Patches: Layout-Tweaks + Skills-Archiv ---------- */
+
+/* Fortschritts- und Zeitbalken gleich lang (feste, gleiche Label-Breiten) */
+.progress-row .pcount, .time-row > span:first-child { flex: none; width: 44px; }
+.progress-row .pct, .time-row > span:last-child { flex: none; width: 44px; text-align: right; min-width: 0; }
+
+/* Event-Datum feste Breite -> Namen in einer Flucht */
+.ev-date { width: 92px; min-width: 0; white-space: nowrap; overflow: hidden; }
+.ev-task-date { flex: none; font-size: 10px; color: var(--muted); }
+
+/* Detail-Kopfleiste (Zurück) über volle Breite -> Spalten beginnen auf gleicher Höhe */
+.detail-bar { grid-column: 1 / -1; margin-bottom: 8px; }
+.detail-bar .back { margin-bottom: 0; }
+
+/* Erledigt-Archiv: erledigte Schritte/Unterschritte ausgegraut in ihrer Hierarchie */
+.node.arch.context > .node-row { opacity: 0.5; }
+.node.arch.context > .node-row .row-text { color: var(--muted); }
+.node.arch .branch-mark { color: var(--muted); }
+.node.arch > .node-row .row-text { cursor: default; }

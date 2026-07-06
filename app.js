@@ -15,9 +15,16 @@
   const QUEST_TABS = [
     { key: 'main', label: 'Main' },
     { key: 'side', label: 'Side' },
+    { key: 'skill', label: 'Skills' },
     { key: 'events', label: 'Events' },
     { key: 'erledigt', label: 'Erledigt' },
   ];
+  const CATS = [
+    { key: 'main', label: 'Main' },
+    { key: 'side', label: 'Side' },
+    { key: 'skill', label: 'Skill' },
+  ];
+  const catOptions = sel => CATS.map(c => `<option value="${c.key}"${c.key === sel ? ' selected' : ''}>${c.label}</option>`).join('');
   const EVENT_COLOR = '#7A6E8A';
 
   const PRIOS = [
@@ -122,6 +129,9 @@
 
   const findStep = (q, id) => q.steps.find(s => s.id === id);
   const findNodeAny = (q, id) => { for (const s of q.steps) { if (s.id === id) return s; const sub = findSubRec(s.subs, id); if (sub) return sub; } return null; };
+  /* Enthält ein Knoten (Schritt/Unterschritt) irgendwo erledigte Nachfahren? */
+  function anyDoneWithin(node) { for (const c of node.subs) { if (subDone(c) || anyDoneWithin(c)) return true; } return false; }
+  const isSkill = q => q.category === 'skill';
   /* nächster Schritt (kann Schritt oder Unterschritt sein): Anzeige-Label + Eltern-Schritt. */
   function nextInfo(q) {
     if (!q.nextStepId) return null;
@@ -207,7 +217,7 @@
     if (Array.isArray(raw.quests)) {
       s.quests = raw.quests.filter(q => q && typeof q === 'object').map(q => ({
         id: q.id || uid(), title: String(q.title ?? ''),
-        category: q.category === 'side' ? 'side' : 'main',
+        category: ['side', 'skill'].includes(q.category) ? q.category : 'main',
         section: SECTIONS.some(x => x.key === q.section) ? q.section : 'studium',
         type: q.type === 'laufend' ? 'laufend' : 'frist',
         notes: typeof q.notes === 'string' ? q.notes : '',
@@ -244,6 +254,7 @@
   function collectEntries() {
     const out = [];
     for (const q of state.quests) {
+      if (q.category === 'skill') continue; // Skills haben keine Termine/Kalendereinträge
       if (q.deadline) out.push({ date: q.deadline, kind: 'quest', questId: q.id, text: q.title, done: q.done, checkable: false });
       for (const s of q.steps) {
         if (s.deadline && s.type !== 'laufend') {
@@ -280,13 +291,13 @@
   const tabbar = document.getElementById('tabbar');
 
   let state = loadState();
-  let activeTab = 'quests';
+  let activeTab = 'calendar';   // Tagesstartseite: Kalender/Tag mit heute als Default
   let questCat = 'main';
   let activeQuestId = null;
   let activeStepId = null;
   let activeEventId = null;
   let stepTab = 'aktuell';
-  let calView = 'monat';
+  let calView = 'tag';
   let calCursor = todayStr();
   let dayStamp = todayStr();
   let refocusSel = null;
@@ -308,13 +319,18 @@
     return `<div class="time-row"><span>${fmtShort(start)}</span><div class="track${over ? ' over' : ''}"><div class="fill time-fill" style="width:${pct}%"></div><div class="mark" style="left:${pct}%"></div></div><span>${fmtShort(q.deadline)}</span></div>`;
   }
 
+  const catField = q => `<label class="sel-field">Reiter<select data-sel="cat" data-id="${q.id}">${catOptions(q.category)}</select></label>`;
+  const progressRow = q => { const { done, total } = questLeaves(q); return total ? `<div class="progress-row"><span class="pcount">${done}/${total}</span><div class="track"><div class="fill" style="width:${questPct(q)}%"></div></div><span class="pct">${questPct(q)}%</span></div>` : ''; };
+
   function renderQuestMeta(q) {
+    if (isSkill(q)) {
+      return `<div class="qmeta"><div class="meta-row">${catField(q)}</div>${progressRow(q)}</div>`;
+    }
     const laufend = q.type === 'laufend';
     const p = prioOf(q.priority);
-    const { done, total } = questLeaves(q);
-    const pct = questPct(q);
     return `<div class="qmeta">
       <div class="meta-row">
+        ${catField(q)}
         <label class="sel-field">Bereich<select data-sel="section" data-id="${q.id}">${sectionOptions(q.section)}</select></label>
         <label class="sel-field">Typ<select data-sel="type" data-id="${q.id}">${typeOptions(q.type)}</select></label>
         ${laufend ? '' : `<button class="chip prio-btn" data-action="cycle-prio" data-id="${q.id}">${dotHtml(p)}${p.label}</button>`}
@@ -323,7 +339,7 @@
         <label class="date-field">Start<input type="date" data-field="start" data-id="${q.id}" value="${q.start || q.createdAt}"></label>
         <label class="date-field">Ende<input type="date" data-field="deadline" data-id="${q.id}" value="${q.deadline || ''}"></label>
       </div>`}
-      ${total ? `<div class="progress-row"><span>${done}/${total}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>` : ''}
+      ${progressRow(q)}
       ${laufend ? '' : timeRow(q)}
     </div>`;
   }
@@ -331,17 +347,18 @@
   function renderQuestRow(q, active) {
     const isActive = active && q.id === active.id;
     const isFocus = q.id === state.focusQuestId;
+    const skill = isSkill(q);
     const laufend = q.type === 'laufend';
     const p = prioOf(q.priority);
     const pct = questPct(q);
     const eff = questEffDeadline(q);
     const du = eff ? daysUntil(eff) : null;
     const hasSteps = questLeaves(q).total > 0;
-    const dot = laufend ? 'var(--flow)' : p.color;
-    const tail = laufend ? '<span class="flow-badge">laufend</span>' : (du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
+    const dot = skill ? 'var(--muted)' : (laufend ? 'var(--flow)' : p.color);
+    const tail = skill ? '' : (laufend ? '<span class="flow-badge">laufend</span>' : (du !== null && !q.done ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : ''));
     return `<div class="qwrap">
       <div class="qrow${isActive ? ' active' : ''}${isFocus ? ' focus' : ''}${q.done ? ' done' : ''}" data-action="open-quest" data-id="${q.id}">
-        ${!hasSteps && !laufend
+        ${!hasSteps && !laufend && !skill
           ? `<button class="checkbox" data-action="toggle-quest" data-id="${q.id}" aria-label="Quest abhaken">${ICONS.check}</button>`
           : `<span class="qdot" style="background:${dot}"></span>`}
         <span class="qname${isActive ? ' editable' : ''}"${isActive ? ` data-edit="quest-title" data-id="${q.id}"` : ''}>${esc(q.title)}</span>
@@ -378,7 +395,8 @@
     return `<button class="next-btn${isNext ? ' on' : ''}" data-action="toggle-next" data-quest="${questId}" data-id="${id}" aria-label="Als nächsten Schritt" title="Als nächsten Schritt">→</button>`;
   }
 
-  function renderSub(sub, questId, stepId, nextId) {
+  /* Aktuell-Ansicht: erledigte Unterschritte werden ausgeblendet (ins Erledigt-Archiv). */
+  function renderSub(sub, questId, stepId, nextId, showNext) {
     const hasKids = sub.subs.length > 0;
     const done = subDone(sub);
     const isNext = sub.id === nextId;
@@ -387,24 +405,24 @@
     const control = hasKids
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
-    return `<li class="node sub${done ? ' done' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}">
+    const kids = sub.subs.filter(k => !subDone(k));
+    return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}">
       <div class="node-row">
         <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         ${control}
         <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
-        ${nextBtn(questId, sub.id, isNext)}
+        ${showNext ? nextBtn(questId, sub.id, isNext) : ''}
         <button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
       ${sub.open ? `<ul class="subtree">
-        ${sub.subs.map(k => renderSub(k, questId, stepId, nextId)).join('')}
+        ${kids.map(k => renderSub(k, questId, stepId, nextId, showNext)).join('')}
         <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${stepId}" data-parent="${sub.id}"`)}</li>
       </ul>` : ''}
     </li>`;
   }
 
-  function renderStep(s, questId, nextId) {
+  function renderStep(s, questId, nextId, showNext) {
     const hasSubs = stepHasSubs(s);
-    const done = stepDone(s);
     const sel = s.id === activeStepId;
     const isNext = s.id === nextId;
     const hasNextInside = nextId && !isNext && !!findSubRec(s.subs, nextId);
@@ -412,35 +430,71 @@
     const eff = stepEffDeadline(s);
     const du = eff ? daysUntil(eff) : null;
     const control = hasSubs
-      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      ? `<span class="branch-mark">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Abhaken">${ICONS.check}</button>`;
-    const tail = s.type === 'laufend' ? '<span class="flow-badge">laufend</span>' : (du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
-    return `<li class="node step${done ? ' done' : ''}${sel ? ' sel' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${s.open ? ' open' : ''}">
+    const tail = showNext && s.type === 'laufend' ? '<span class="flow-badge">laufend</span>' : (showNext && du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
+    const kids = s.subs.filter(sub => !subDone(sub));
+    return `<li class="node step${sel ? ' sel' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${s.open ? ' open' : ''}">
       <div class="node-row" data-action="select-step" data-quest="${questId}" data-id="${s.id}">
         <button class="chev" data-action="toggle-step-open" data-quest="${questId}" data-id="${s.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         ${control}
         <span class="row-text${sel ? ' editable' : ''}"${sel ? ` data-edit="step-text" data-quest="${questId}" data-id="${s.id}"` : ''}>${esc(s.text)}</span>
         ${tail}
-        ${nextBtn(questId, s.id, isNext)}
+        ${showNext ? nextBtn(questId, s.id, isNext) : ''}
         <button class="del" data-action="del-step" data-quest="${questId}" data-id="${s.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
       ${s.open ? `<ul class="subtree">
-        ${s.subs.map(sub => renderSub(sub, questId, s.id, nextId)).join('')}
+        ${kids.map(sub => renderSub(sub, questId, s.id, nextId, showNext)).join('')}
         <li class="add-sub">${addMini('add-sub', 'Unterschritt', ` data-quest="${questId}" data-step="${s.id}"`)}</li>
       </ul>` : ''}
     </li>`;
   }
 
+  /* Erledigt-Archiv: erledigte Knoten in ihrer Hierarchie, ausgegraut; nicht-erledigte
+     Vorfahren als blasser Kontext. Erledigte Blätter lassen sich zum Reaktivieren abhaken. */
+  function renderDoneSub(sub, questId, stepId) {
+    const done = subDone(sub);
+    const hasKids = sub.subs.length > 0;
+    const kids = sub.subs.filter(k => subDone(k) || anyDoneWithin(k));
+    const { done: sd, total: st } = subLeaves(sub);
+    const control = hasKids
+      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
+    return `<li class="node sub arch${done ? ' done' : ' context'}">
+      <div class="node-row">${control}<span class="row-text">${esc(sub.text)}</span></div>
+      ${kids.length ? `<ul class="subtree">${kids.map(k => renderDoneSub(k, questId, stepId)).join('')}</ul>` : ''}
+    </li>`;
+  }
+  function renderDoneStep(s, questId) {
+    const done = stepDone(s);
+    const hasSubs = stepHasSubs(s);
+    const kids = s.subs.filter(k => subDone(k) || anyDoneWithin(k));
+    const { done: sd, total: st } = stepLeaves(s);
+    const control = hasSubs
+      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
+    return `<li class="node step arch${done ? ' done' : ' context'}">
+      <div class="node-row">${control}<span class="row-text">${esc(s.text)}</span></div>
+      ${kids.length ? `<ul class="subtree">${kids.map(k => renderDoneSub(k, questId, s.id)).join('')}</ul>` : ''}
+    </li>`;
+  }
+
   function renderStepsCol(q) {
-    const active = q.steps.filter(s => !stepDone(s));
-    const done = q.steps.filter(s => stepDone(s));
-    const list = stepTab === 'erledigt' ? done.slice().sort(byDoneAt) : active.slice().sort(byStepUrgency);
-    const body = list.length ? list.map(s => renderStep(s, q.id, q.nextStepId)).join('')
-      : `<div class="empty">${stepTab === 'erledigt' ? '— nichts erledigt —' : '— keine Schritte —'}</div>`;
+    const showNext = !isSkill(q);
+    const activeSteps = q.steps.filter(s => !stepDone(s));
+    const doneLeaves = questLeaves(q).done;
+    let body;
+    if (stepTab === 'erledigt') {
+      const rows = q.steps.filter(s => stepDone(s) || anyDoneWithin(s)).map(s => renderDoneStep(s, q.id)).join('');
+      body = rows || '<div class="empty">— nichts erledigt —</div>';
+    } else {
+      const list = activeSteps.slice().sort(byStepUrgency);
+      body = list.length ? list.map(s => renderStep(s, q.id, q.nextStepId, showNext)).join('') : '<div class="empty">— keine Schritte —</div>';
+    }
     return `<div class="col-steps">
       <div class="step-tabs">
-        <button data-action="step-tab" data-tab="aktuell" class="${stepTab === 'aktuell' ? 'active' : ''}">Schritte<span class="seg-count">${active.length}</span></button>
-        <button data-action="step-tab" data-tab="erledigt" class="${stepTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${done.length}</span></button>
+        <button data-action="step-tab" data-tab="aktuell" class="${stepTab === 'aktuell' ? 'active' : ''}">Schritte<span class="seg-count">${activeSteps.length}</span></button>
+        <button data-action="step-tab" data-tab="erledigt" class="${stepTab === 'erledigt' ? 'active' : ''}">Erledigt<span class="seg-count">${doneLeaves}</span></button>
       </div>
       <ul class="tree">${body}</ul>
       ${stepTab === 'aktuell' ? addMini('add-step', 'Neuer Schritt', ` data-quest="${q.id}"`) : ''}
@@ -459,7 +513,22 @@
   }
 
   function renderContextCol(q) {
+    const skill = isSkill(q);
     const step = activeStepId ? findStep(q, activeStepId) : null;
+    if (skill) {
+      if (step) {
+        return `<div class="col-notes">
+          <div class="col-head">Kontext · Schritt<button class="ctx-up" data-action="deselect-step">↑ Skill</button></div>
+          <div class="ctx-title">${esc(step.text)}</div>
+          <div class="ctx-label">Notizen</div>
+          <textarea class="notes" data-step-notes data-quest="${q.id}" data-id="${step.id}" placeholder="Notizen zum Schritt …">${esc(step.notes)}</textarea>
+        </div>`;
+      }
+      return `<div class="col-notes">
+        <div class="col-head">Notizen</div>
+        <textarea class="notes" data-notes data-id="${q.id}" placeholder="Notizen zum Skill …">${esc(q.notes)}</textarea>
+      </div>`;
+    }
     if (step) {
       const laufend = step.type === 'laufend';
       const isNext = q.nextStepId === step.id;
@@ -538,6 +607,8 @@
   }
 
   function renderEventContext(e) {
+    const tasks = state.agenda.filter(a => a.date >= e.start && a.date <= eventEnd(e)).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    const taskRows = tasks.map(a => `<li class="row${a.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda" data-id="${a.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(a.text)}</span><span class="ev-task-date">${fmtShort(a.date)}</span><button class="del" data-action="del-agenda" data-id="${a.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
     return `<div class="col-notes">
       <div class="col-head">Event</div>
       <div class="ctx-title">${esc(e.name)}</div>
@@ -545,8 +616,15 @@
         <label class="date-field">Von<input type="date" data-field="ev-start" data-id="${e.id}" value="${e.start}"></label>
         <label class="date-field">Bis<input type="date" data-field="ev-end" data-id="${e.id}" value="${e.end || ''}"></label>
       </div>
-      <div class="ctx-label">Notizen</div>
-      <textarea class="notes" data-ev-notes data-id="${e.id}" placeholder="Notizen zum Event …">${esc(e.notes)}</textarea>
+      <div class="ctx-block">
+        <div class="ctx-label">Tagesaufgaben</div>
+        <ul class="items">${taskRows}</ul>
+        ${addMini('add-agenda', 'Tagesaufgabe', ` data-date="${e.start}"`)}
+      </div>
+      <div class="ctx-block">
+        <div class="ctx-label">Notizen</div>
+        <textarea class="notes" data-ev-notes data-id="${e.id}" placeholder="Notizen zum Event …">${esc(e.notes)}</textarea>
+      </div>
     </div>`;
   }
 
@@ -555,15 +633,19 @@
     const active = activeEventId ? events.find(e => e.id === activeEventId) : null;
     const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : '<div class="empty">— keine Events —</div>';
     return `<div class="ev-board${active ? ' detail has-active' : ''}">
-      <div class="ev-list">${active ? '<button class="back" data-action="close-event">← Übersicht</button>' : ''}${list}${addMini('add-event', 'Neues Event')}</div>
+      ${active ? '<div class="detail-bar"><button class="back" data-action="close-event">← Übersicht</button></div>' : ''}
+      <div class="ev-list">${list}${addMini('add-event', 'Neues Event')}</div>
       ${active ? renderEventContext(active) : ''}
     </div>`;
   }
+
+  const backBar = '<div class="detail-bar"><button class="back" data-action="close-quest">← Übersicht</button></div>';
 
   function renderQuests() {
     const counts = {
       main: state.quests.filter(q => q.category === 'main' && !q.done).length,
       side: state.quests.filter(q => q.category === 'side' && !q.done).length,
+      skill: state.quests.filter(q => q.category === 'skill' && !q.done).length,
       events: state.events.length,
       erledigt: state.quests.filter(q => q.done).length,
     };
@@ -573,11 +655,23 @@
     if (questCat === 'events') return head + renderEvents();
     if (questCat === 'erledigt') return head + renderArchive();
 
+    if (questCat === 'skill') {
+      const inTab = state.quests.filter(q => q.category === 'skill' && !q.done);
+      const active = activeQuestId ? inTab.find(q => q.id === activeQuestId) : null;
+      const rows = inTab.length ? inTab.map(q => renderQuestRow(q, active)).join('') : '';
+      return head + `<div class="board${active ? ' detail has-active' : ''}">
+        ${active ? backBar : ''}
+        <div class="col-list"><section class="board-section${active ? ' has-active' : ''}"><div class="section-title">Skills</div>${rows || '<div class="empty">— keine Skills —</div>'}${addMini('add-quest', 'Neuer Skill', ' data-section="studium"')}</section></div>
+        ${active ? renderStepsCol(active) + renderContextCol(active) : ''}
+      </div>`;
+    }
+
     const inTab = state.quests.filter(q => q.category === questCat && !q.done);
     const active = activeQuestId ? inTab.find(q => q.id === activeQuestId) : null;
     const sections = SECTIONS.map(sec => renderSection(sec, inTab.filter(q => q.section === sec.key), active)).join('');
     return head + `<div class="board${active ? ' detail has-active' : ''}">
-      <div class="col-list">${active ? '<button class="back" data-action="close-quest">← Übersicht</button>' : ''}${sections}</div>
+      ${active ? backBar : ''}
+      <div class="col-list">${sections}</div>
       ${active ? renderStepsCol(active) + renderContextCol(active) : ''}
     </div>`;
   }
@@ -778,7 +872,8 @@
   view.addEventListener('change', e => {
     const sel = e.target.closest('select[data-sel]');
     if (sel) {
-      if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
+      if (sel.dataset.sel === 'cat') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q && CATS.some(c => c.key === sel.value)) { q.category = sel.value; questCat = sel.value; activeStepId = null; } }
+      else if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
       else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; }
       save(); render(); return;
     }
