@@ -882,6 +882,36 @@ input { font: inherit; color: inherit; }
 .next-btn.on { opacity: 1; font-weight: 700; }
 .node.next > .node-row { background: rgba(61, 90, 115, 0.08); }
 .node.has-next > .node-row .chev { color: var(--blue); }
+
+/* Unterschritt als Tagesaufgabe planen (Kalender-Icon beim Überfahren; Datum sichtbar wenn gesetzt) */
+.sub-schedule-btn { flex: none; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: var(--muted); opacity: 0; transition: opacity 0.12s, color 0.12s; }
+.sub-schedule-btn .ico { width: 13px; height: 13px; }
+.node-row:hover .sub-schedule-btn { opacity: 0.45; }
+.sub-schedule-btn:hover { opacity: 1; color: var(--blue); }
+/* Kompaktes Datums-Chip im Ruhezustand; natives Datumsfeld beim Überfahren/Fokus */
+.sub-sched { flex: none; position: relative; }
+.sub-sched-chip {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--blue);
+  border: 1px solid var(--rule);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.sub-sched-input {
+  display: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--blue);
+  background: var(--paper);
+  border: 1px solid var(--blue);
+  padding: 1px 3px;
+}
+.node-row:hover .sub-sched-chip, .sub-sched:focus-within .sub-sched-chip { display: none; }
+.node-row:hover .sub-sched-input, .sub-sched:focus-within .sub-sched-input { display: inline-block; }
+.node-row:hover .sub-sched-chip + .sub-sched-input { outline: none; }
+.node.sub.scheduled > .node-row .chev { color: var(--blue); }
 .next-link { text-align: left; color: var(--blue); font-size: 13px; }
 .next-link:hover { text-decoration: underline; }
 .ctx-empty { font-size: 12px; color: var(--muted); }

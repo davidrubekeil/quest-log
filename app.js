@@ -541,11 +541,18 @@
       ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const kids = sub.subs.filter(k => !subDone(k));
-    return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}">
+    // Nur Blatt-Unterschritte lassen sich mit Datum als Tagesaufgabe aufs Dashboard legen (bei Skills nicht).
+    const schedule = (showNext && !hasKids)
+      ? (sub.scheduledDate
+        ? `<span class="sub-sched" title="Tagesaufgabe am ${fmtShort(sub.scheduledDate)} — Datum leeren zum Entfernen"><span class="sub-sched-chip">${fmtShort(sub.scheduledDate)}</span><input class="sub-sched-input" type="date" data-field="sub-schedule" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" value="${sub.scheduledDate}"></span>`
+        : `<button class="sub-schedule-btn" data-action="schedule-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Als Tagesaufgabe planen" title="Als Tagesaufgabe aufs Dashboard legen">${ICONS.calendar}</button>`)
+      : '';
+    return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}${sub.scheduledDate ? ' scheduled' : ''}">
       <div class="node-row">
         <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         <span class="node-control">${control}</span>
         <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
+        ${schedule}
         ${showNext ? nextBtn(questId, sub.id, isNext) : ''}
         <button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button>
       </div>
@@ -1126,6 +1133,7 @@
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
       case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
       case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); syncQuestDone(q); break; }
+      case 'schedule-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub && !sub.subs.length) sub.scheduledDate = todayStr(); break; }
 
       case 'del-ms': { const q = state.quests.find(q => q.id === questId); if (q) q.milestones = q.milestones.filter(m => m.id !== id); break; }
 
@@ -1203,6 +1211,7 @@
     else if (f === 'ev-start') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev && v) { ev.start = v; if (ev.end && ev.end < ev.start) ev.end = null; } }
     else if (f === 'ev-end') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev) ev.end = (v && v >= ev.start) ? v : null; }
     else if (f === 'agenda-date') { const a = state.agenda.find(a => a.id === input.dataset.id); if (a && v) { removeFromAllTop(taskKey({ kind: 'agenda', id: a.id })); a.date = v; } }
+    else if (f === 'sub-schedule') { const q = state.quests.find(q => q.id === input.dataset.quest); const s = q && findStep(q, input.dataset.step); const sub = s && findSubRec(s.subs, input.dataset.id); if (sub) { removeFromAllTop(taskKey({ kind: 'qsub', questId: input.dataset.quest, stepId: input.dataset.step, subId: input.dataset.id })); sub.scheduledDate = v; } }
     save(); render();
   });
 
