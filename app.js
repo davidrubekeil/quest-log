@@ -17,7 +17,6 @@
     { key: 'side', label: 'Side' },
     { key: 'skill', label: 'Skills' },
     { key: 'events', label: 'Events' },
-    { key: 'erledigt', label: 'Erledigt' },
   ];
   const CATS = [
     { key: 'main', label: 'Main' },
@@ -165,7 +164,7 @@
 
   /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, scratchpad: [] });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {} });
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -271,8 +270,28 @@
       }
     }
 
-    if (Array.isArray(raw.scratchpad)) {
-      s.scratchpad = raw.scratchpad.map(n => (n && typeof n === 'object' && (n.text ?? '') !== '') ? { id: n.id || uid(), text: String(n.text) } : null).filter(Boolean);
+    // Journal pro Tag: { [datum]: { notes:[{id,text}], activities:[…] } }.
+    const cleanNotes = arr => (Array.isArray(arr) ? arr : []).map(n => (n && typeof n === 'object' && (n.text ?? '') !== '') ? { id: n.id || uid(), text: String(n.text) } : null).filter(Boolean);
+    const cleanActs = arr => (Array.isArray(arr) ? arr : []).map(a => (a && typeof a === 'object' && a.activityId != null) ? {
+      id: a.id || uid(), activityId: String(a.activityId), name: String(a.name ?? ''), type: String(a.type ?? ''),
+      distanceKm: Number.isFinite(a.distanceKm) ? a.distanceKm : null, movingMin: Number.isFinite(a.movingMin) ? a.movingMin : null,
+      elevM: Number.isFinite(a.elevM) ? a.elevM : null, at: typeof a.at === 'string' ? a.at : null,
+    } : null).filter(Boolean);
+    if (raw.journal && typeof raw.journal === 'object' && !Array.isArray(raw.journal)) {
+      for (const [date, day] of Object.entries(raw.journal)) {
+        if (!isDateStr(date) || !day || typeof day !== 'object') continue;
+        const notes = cleanNotes(day.notes), activities = cleanActs(day.activities);
+        if (notes.length || activities.length) s.journal[date] = { notes, activities };
+      }
+    }
+    // Migration alter globaler „Gedanken" → heutiger Journaltag.
+    if (Array.isArray(raw.scratchpad) && raw.scratchpad.length) {
+      const migrated = cleanNotes(raw.scratchpad);
+      if (migrated.length) {
+        const t = todayStr();
+        const day = s.journal[t] || (s.journal[t] = { notes: [], activities: [] });
+        day.notes = day.notes.concat(migrated);
+      }
     }
     return s;
   }
@@ -339,6 +358,18 @@
       if (arr.length) state.topTasks[date] = arr; else delete state.topTasks[date];
     }
   }
+
+  /* ---------- Journal (Gedanken/Notizen + Aktivitäten pro Tag) ---------- */
+
+  const journalNotes = date => (state.journal[date] && state.journal[date].notes) || [];
+  const journalActs = date => (state.journal[date] && state.journal[date].activities) || [];
+  function journalDayRW(date) { return state.journal[date] || (state.journal[date] = { notes: [], activities: [] }); }
+  function journalPrune(date) { const d = state.journal[date]; if (d && !d.notes.length && !d.activities.length) delete state.journal[date]; }
+  function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text }); }
+  function delJournalNote(date, id) { const d = state.journal[date]; if (!d) return; d.notes = d.notes.filter(n => n.id !== id); journalPrune(date); }
+  function editJournalNote(date, id, text) { const n = journalNotes(date).find(n => n.id === id); if (n) n.text = text; }
+  /* alle Journaltage mit Inhalt, neueste zuerst */
+  const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length).sort((a, b) => a < b ? 1 : -1);
 
   /* Container-Schritte (mit Unterschritten), deren Frist auf dateStr fällt — rein informativ, klickbar zur Quest. */
   function collectDayDeadlineSteps(dateStr) {
@@ -432,6 +463,7 @@
   let stepTab = 'aktuell';
   let dashTab = 'offen';
   let eventTab = 'single';
+  let archiveTab = 'quests';
   let calView = 'tag';
   let calCursor = todayStr();
   let dayStamp = todayStr();
@@ -741,7 +773,37 @@
         html += `<div class="arch-sec">${esc(sec.label)}</div>${qs.map(renderArchQuest).join('')}`;
       }
     }
+    const skills = done.filter(q => q.category === 'skill');
+    if (skills.length) html += `<div class="arch-cat">Skills</div>${skills.map(renderArchQuest).join('')}`;
     return `<div class="archive">${html || '<div class="empty">— noch nichts erledigt —</div>'}</div>`;
+  }
+
+  /* --- Journal (Gedanken/Notizen + Aktivitäten pro Tag, neueste zuerst) --- */
+
+  function renderJournal() {
+    const dates = journalDates();
+    if (!dates.length) return '<div class="archive"><div class="empty">— noch keine Einträge —</div></div>';
+    const days = dates.map(ds => {
+      const d = parseDate(ds);
+      const acts = journalActs(ds).map(activityLine).join('');
+      const notes = journalNotes(ds).map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${ds}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${ds}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+      return `<div class="journal-day">
+        <div class="journal-date">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</div>
+        <ul class="scratch-list">${acts}${notes}</ul>
+        ${addMini('add-scratch', 'Gedanke', ` data-date="${ds}"`)}
+      </div>`;
+    }).join('');
+    return `<div class="archive journal">${days}</div>`;
+  }
+
+  function renderArchiveTab() {
+    const doneCount = state.quests.filter(q => q.done).length;
+    const journalCount = journalDates().length;
+    const tabs = `<div class="seg">
+      <button data-action="archive-tab" data-tab="quests" class="${archiveTab === 'quests' ? 'active' : ''}">Quests<span class="seg-count">${doneCount}</span></button>
+      <button data-action="archive-tab" data-tab="journal" class="${archiveTab === 'journal' ? 'active' : ''}">Journal<span class="seg-count">${journalCount}</span></button>
+    </div>`;
+    return `<div class="board-title">Archiv</div>${tabs}${archiveTab === 'journal' ? renderJournal() : renderArchive()}`;
   }
 
   /* --- Events (zweispaltig: Liste + Kontext) --- */
@@ -822,13 +884,12 @@
       side: state.quests.filter(q => q.category === 'side' && !q.done).length,
       skill: state.quests.filter(q => q.category === 'skill' && !q.done).length,
       events: state.events.length,
-      erledigt: state.quests.filter(q => q.done).length,
     };
+    if (questCat === 'erledigt') questCat = 'main'; // Erledigt ist ins Archiv gewandert
     const tabs = QUEST_TABS.map(c => `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
     const head = `<div class="board-title">Questlog</div><div class="seg">${tabs}</div>`;
 
     if (questCat === 'events') return head + renderEvents();
-    if (questCat === 'erledigt') return head + renderArchive();
 
     if (questCat === 'skill') {
       const inTab = state.quests.filter(q => q.category === 'skill' && !q.done);
@@ -981,12 +1042,22 @@
     return null;
   }
 
-  function renderScratchpad() {
-    const items = state.scratchpad.map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+  function activityLine(a) {
+    const parts = [];
+    if (a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1).replace('.', ',')} km`);
+    if (a.movingMin != null) parts.push(`${Math.round(a.movingMin)} min`);
+    if (a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
+    return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text"><strong>${esc(a.name || a.type)}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}</span></li>`;
+  }
+
+  /* Notizfeld pro Tag (Gedanken) + automatisch geloggte Strava-Aktivitäten. */
+  function renderDayNotes(dateStr) {
+    const notes = journalNotes(dateStr).map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+    const acts = journalActs(dateStr).map(activityLine).join('');
     return `<div class="dash-scratch">
       <div class="dash-label">Gedanken</div>
-      <ul class="scratch-list">${items}</ul>
-      <form class="add-row add-scratch" data-action="add-scratch"><input type="text" placeholder="Gedanke …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+      <ul class="scratch-list">${acts}${notes}</ul>
+      <form class="add-row add-scratch" data-action="add-scratch" data-date="${dateStr}"><input type="text" placeholder="Gedanke …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
     </div>`;
   }
 
@@ -1035,7 +1106,7 @@
         ${overdueBox}
         ${tasksBox}
       </div>
-      <div class="dash-side">${renderScratchpad()}</div>
+      <div class="dash-side">${renderDayNotes(dateStr)}</div>
     </div>`;
   }
 
@@ -1068,7 +1139,7 @@
   function render() {
     if (editing) return;
     for (const btn of tabbar.querySelectorAll('.tab')) btn.classList.toggle('active', btn.dataset.tab === activeTab);
-    view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : renderLists();
+    view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : activeTab === 'archive' ? renderArchiveTab() : renderLists();
     if (refocusSel) { const el = view.querySelector(refocusSel); if (el) el.focus(); refocusSel = null; }
     if (pendingEditSel) { const el = view.querySelector(pendingEditSel); pendingEditSel = null; if (el) startEdit(el); }
   }
@@ -1091,7 +1162,7 @@
       case 'ms-text': { const q = state.quests.find(q => q.id === ds.quest); const m = q && q.milestones.find(m => m.id === ds.id); if (m) m.text = val; break; }
       case 'ev-name': { const ev = state.events.find(x => x.id === ds.id); if (ev) ev.name = val; break; }
       case 'agenda-text': { const a = state.agenda.find(a => a.id === ds.id); if (a) a.text = val; break; }
-      case 'scratch-text': { const n = state.scratchpad.find(n => n.id === ds.id); if (n) n.text = val; break; }
+      case 'scratch-text': { if (isDateStr(ds.date)) editJournalNote(ds.date, ds.id, val); break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
@@ -1151,6 +1222,7 @@
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
       case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
+      case 'archive-tab': archiveTab = el.dataset.tab === 'journal' ? 'journal' : 'quests'; break;
       case 'select-step': { if (id === activeStepId) return; activeStepId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
       case 'deselect-step': activeStepId = null; break;
       case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }
@@ -1171,7 +1243,7 @@
       case 'cal-next': calCursor = calView === 'monat' ? addMonths(calCursor, 1) : addDays(calCursor, 1); break;
       case 'cal-today': calCursor = todayStr(); break;
       case 'cal-day': calCursor = el.dataset.date; calView = 'tag'; break;
-      case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; activeTab = 'quests'; questCat = q.done ? 'erledigt' : q.category; activeQuestId = q.done ? null : q.id; activeStepId = null; stepTab = 'aktuell'; break; }
+      case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; if (q.done) { activeTab = 'archive'; archiveTab = 'quests'; } else { activeTab = 'quests'; questCat = q.category; activeQuestId = q.id; activeStepId = null; stepTab = 'aktuell'; } break; }
       case 'toggle-agenda': { const a = state.agenda.find(a => a.id === id); if (!a) return; a.done = !a.done; a.doneAt = a.done ? nowISO() : null; break; }
       case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); removeFromAllTop(taskKey({ kind: 'agenda', id })); break;
       case 'toggle-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); const sub = a && a.subs.find(s => s.id === id); if (!sub) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; break; }
@@ -1207,7 +1279,7 @@
       case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
       case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
       case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
-      case 'del-scratch': state.scratchpad = state.scratchpad.filter(n => n.id !== id); break;
+      case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
 
       default: return;
     }
@@ -1276,7 +1348,7 @@
       }
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
       case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); const eventId = form.dataset.event || null; state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [], eventId }); refocusSel = `form[data-action="add-agenda"]${eventId ? `[data-event="${eventId}"]` : ''} input`; break; }
-      case 'add-scratch': { state.scratchpad.push({ id: uid(), text }); refocusSel = `form[data-action="add-scratch"] input`; break; }
+      case 'add-scratch': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); addJournalNote(date, text); refocusSel = `form[data-action="add-scratch"][data-date="${date}"] input`; break; }
       case 'dash-add-agenda-sub': { const a = state.agenda.find(a => a.id === form.dataset.agenda); if (!a) return; a.subs.push({ id: uid(), text, done: false, doneAt: null }); refocusSel = `form[data-action="dash-add-agenda-sub"][data-agenda="${a.id}"] input`; break; }
       case 'dash-add-qsub': {
         const q = state.quests.find(q => q.id === form.dataset.quest);

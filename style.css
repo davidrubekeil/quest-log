@@ -1059,7 +1059,16 @@ input { font: inherit; color: inherit; }
 .scratch-item .row-text { font-size: 13px; line-height: 1.5; }
 .scratch-item .del { align-self: center; }
 .scratch-item:hover .del { opacity: 0.4; }
+.scratch-item.activity .scratch-bullet { color: #E06B3B; }
+.scratch-item.activity .row-text { color: var(--muted); }
+.scratch-item.activity strong { color: var(--ink); font-weight: 600; }
 .add-scratch { margin-top: 10px; }
+
+/* Journal im Archiv: ein Block pro Tag */
+.archive.journal { max-width: 640px; }
+.journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
+.journal-day:last-child { border-bottom: none; }
+.journal-date { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 8px; }
 
 @media (max-width: 900px) {
   .dashboard { grid-template-columns: minmax(0, 1fr); gap: 28px; }
