@@ -1064,6 +1064,23 @@ input { font: inherit; color: inherit; }
 .scratch-item.activity strong { color: var(--ink); font-weight: 600; }
 .add-scratch { margin-top: 10px; }
 
+/* Strava-Sync am Dashboard */
+.strava-box { margin-bottom: 22px; }
+.strava-btn {
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #E06B3B;
+  border: 1px solid #E06B3B;
+  transition: opacity 0.12s;
+}
+.strava-btn:hover { opacity: 0.88; }
+.strava-btn:disabled { opacity: 0.55; cursor: default; }
+.strava-status { margin-top: 6px; font-size: 11px; color: var(--muted); line-height: 1.4; }
+
 /* Journal im Archiv: ein Block pro Tag */
 .archive.journal { max-width: 640px; }
 .journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }

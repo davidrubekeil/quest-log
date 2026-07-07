@@ -26,6 +26,21 @@
   const catOptions = sel => CATS.map(c => `<option value="${c.key}"${c.key === sel ? ' selected' : ''}>${c.label}</option>`).join('');
   const EVENT_COLOR = '#7A6E8A';
 
+  /* Strava: Refresh-Token (separat gespeichert), Aktivitätstyp → Stichwörter für Auto-Abhaken. */
+  const STRAVA_KEY = 'questlog-strava-refresh';
+  const stravaToken = () => { try { return localStorage.getItem(STRAVA_KEY) || null; } catch (e) { return null; } };
+  const setStravaToken = t => { try { if (t) localStorage.setItem(STRAVA_KEY, t); else localStorage.removeItem(STRAVA_KEY); } catch (e) {} };
+  const STRAVA_MATCH = [
+    { types: ['Ride', 'VirtualRide', 'MountainBikeRide', 'GravelRide', 'EBikeRide', 'EMountainBikeRide'], keywords: ['rad', 'fahrrad', 'rennrad', 'velo', 'bike', 'radeln'] },
+    { types: ['Run', 'TrailRun', 'VirtualRun'], keywords: ['lauf', 'joggen', 'jog', 'run'] },
+    { types: ['Swim'], keywords: ['schwimm', 'swim'] },
+    { types: ['Walk', 'Hike'], keywords: ['spazier', 'wandern', 'walk', 'hike', 'gassi'] },
+    { types: ['WeightTraining', 'Workout', 'Crossfit', 'HIIT'], keywords: ['kraft', 'gym', 'workout', 'fitness', 'training'] },
+    { types: ['Yoga'], keywords: ['yoga'] },
+  ];
+  const stravaKeywords = type => { const g = STRAVA_MATCH.find(m => m.types.includes(type)); return g ? g.keywords : []; };
+  const isRunLike = type => ['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike'].includes(type);
+
   const PRIOS = [
     { key: 'hoch',    label: 'Hoch',    color: 'var(--red)' },
     { key: 'mittel',  label: 'Mittel',  color: '#C9A24B' },
@@ -275,7 +290,8 @@
     const cleanActs = arr => (Array.isArray(arr) ? arr : []).map(a => (a && typeof a === 'object' && a.activityId != null) ? {
       id: a.id || uid(), activityId: String(a.activityId), name: String(a.name ?? ''), type: String(a.type ?? ''),
       distanceKm: Number.isFinite(a.distanceKm) ? a.distanceKm : null, movingMin: Number.isFinite(a.movingMin) ? a.movingMin : null,
-      elevM: Number.isFinite(a.elevM) ? a.elevM : null, at: typeof a.at === 'string' ? a.at : null,
+      elevM: Number.isFinite(a.elevM) ? a.elevM : null, avgSpeedMs: Number.isFinite(a.avgSpeedMs) ? a.avgSpeedMs : null,
+      at: typeof a.at === 'string' ? a.at : null,
     } : null).filter(Boolean);
     if (raw.journal && typeof raw.journal === 'object' && !Array.isArray(raw.journal)) {
       for (const [date, day] of Object.entries(raw.journal)) {
@@ -371,6 +387,44 @@
   /* alle Journaltage mit Inhalt, neueste zuerst */
   const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length).sort((a, b) => a < b ? 1 : -1);
 
+  /* Strava-Aktivität → Journaleintrag */
+  function stravaToEntry(a) {
+    return {
+      id: uid(), activityId: String(a.id), name: a.name || '', type: a.type || '',
+      distanceKm: Number.isFinite(a.distance) ? a.distance / 1000 : null,
+      movingMin: Number.isFinite(a.moving_time) ? a.moving_time / 60 : null,
+      elevM: Number.isFinite(a.total_elevation_gain) ? a.total_elevation_gain : null,
+      avgSpeedMs: Number.isFinite(a.average_speed) ? a.average_speed : null,
+      at: typeof a.start_date_local === 'string' ? a.start_date_local : null,
+    };
+  }
+  function markTaskDone(t) {
+    if (t.kind === 'agenda') { const a = state.agenda.find(a => a.id === t.id); if (a && !a.done) { a.done = true; a.doneAt = nowISO(); return true; } return false; }
+    if (t.kind === 'qstep') { const q = state.quests.find(q => q.id === t.questId); const s = q && findStep(q, t.stepId); if (s && !stepHasSubs(s) && !s.done) { s.done = true; s.doneAt = nowISO(); touchStreak(q.streak); syncQuestDone(q); return true; } return false; }
+    if (t.kind === 'qsub') { const q = state.quests.find(q => q.id === t.questId); const s = q && findStep(q, t.stepId); const sub = s && findSubRec(s.subs, t.subId); if (sub && !sub.subs.length && !sub.done) { sub.done = true; sub.doneAt = nowISO(); touchStreak(q.streak); syncQuestDone(q); return true; } return false; }
+    return false;
+  }
+  /* geloggte Aktivitäten ins Journal schreiben (dedupliziert) und passende Tagesaufgaben abhaken */
+  function processStravaActivities(activities) {
+    let logged = 0, checked = 0;
+    for (const a of (Array.isArray(activities) ? activities : [])) {
+      const date = (a.start_date_local || '').slice(0, 10);
+      if (!isDateStr(date)) continue;
+      const day = journalDayRW(date);
+      if (!day.activities.some(x => x.activityId === String(a.id))) { day.activities.push(stravaToEntry(a)); logged++; }
+      const kws = stravaKeywords(a.type);
+      if (kws.length) {
+        for (const t of collectDayTasks(date)) {
+          const txt = t.text.toLowerCase();
+          if (kws.some(k => txt.includes(k)) && markTaskDone(t)) checked++;
+        }
+      }
+      journalPrune(date);
+    }
+    return { logged, checked };
+  }
+  function dayRangeEpoch(dateStr) { const d = parseDate(dateStr); const start = Math.floor(d.getTime() / 1000); return { after: start - 1, before: start + 86400 }; }
+
   /* Container-Schritte (mit Unterschritten), deren Frist auf dateStr fällt — rein informativ, klickbar zur Quest. */
   function collectDayDeadlineSteps(dateStr) {
     const out = [];
@@ -464,6 +518,8 @@
   let dashTab = 'offen';
   let eventTab = 'single';
   let archiveTab = 'quests';
+  let stravaSyncing = false;
+  let stravaStatus = '';
   let calView = 'tag';
   let calCursor = todayStr();
   let dayStamp = todayStr();
@@ -1046,8 +1102,21 @@
     const parts = [];
     if (a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1).replace('.', ',')} km`);
     if (a.movingMin != null) parts.push(`${Math.round(a.movingMin)} min`);
+    if (a.avgSpeedMs != null && a.avgSpeedMs > 0) {
+      if (isRunLike(a.type)) { const pace = 1000 / a.avgSpeedMs / 60; const m = Math.floor(pace), s = Math.round((pace - m) * 60); parts.push(`${m}:${String(s).padStart(2, '0')} /km`); }
+      else parts.push(`${(a.avgSpeedMs * 3.6).toFixed(1).replace('.', ',')} km/h`);
+    }
     if (a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
-    return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text"><strong>${esc(a.name || a.type)}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}</span></li>`;
+    const label = a.type ? `${esc(a.name || a.type)} · ${esc(a.type)}` : esc(a.name);
+    return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text"><strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}</span></li>`;
+  }
+
+  function renderStravaBox(dateStr) {
+    const connected = !!stravaToken();
+    const btn = connected
+      ? `<button class="strava-btn" data-action="strava-sync" data-date="${dateStr}"${stravaSyncing ? ' disabled' : ''}>${stravaSyncing ? 'Synchronisiere …' : 'Mit Strava synchronisieren'}</button>`
+      : `<button class="strava-btn connect" data-action="strava-connect">Mit Strava verbinden</button>`;
+    return `<div class="strava-box">${btn}${stravaStatus ? `<div class="strava-status">${esc(stravaStatus)}</div>` : ''}</div>`;
   }
 
   /* Notizfeld pro Tag (Gedanken) + automatisch geloggte Strava-Aktivitäten. */
@@ -1106,7 +1175,7 @@
         ${overdueBox}
         ${tasksBox}
       </div>
-      <div class="dash-side">${renderDayNotes(dateStr)}</div>
+      <div class="dash-side">${isToday ? renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
     </div>`;
   }
 
@@ -1199,6 +1268,10 @@
     if (!el || !view.contains(el) || el.tagName === 'FORM') return;
     if (el.closest('.editable')) return;
     const { action, id, list: listId, quest: questId, step: stepId } = el.dataset;
+
+    // Strava: eigener async-Ablauf, umgeht das synchrone save()+render() am Ende.
+    if (action === 'strava-connect') { window.location.href = '/.netlify/functions/strava-connect'; return; }
+    if (action === 'strava-sync') { stravaSync(el.dataset.date); return; }
 
     switch (action) {
       case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
@@ -1377,6 +1450,51 @@
   document.addEventListener('visibilitychange', onReturn);
   window.addEventListener('focus', onReturn);
 
+  /* ---------- Strava-Sync ---------- */
+
+  async function stravaSync(dateStr) {
+    const token = stravaToken();
+    const date = isDateStr(dateStr) ? dateStr : todayStr();
+    if (!token || stravaSyncing) return;
+    stravaSyncing = true; stravaStatus = ''; render();
+    try {
+      const { after, before } = dayRangeEpoch(date);
+      const resp = await fetch('/.netlify/functions/strava-sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: token, after, before }),
+      });
+      if (!resp.ok) {
+        stravaStatus = resp.status === 401 ? 'Strava-Verbindung abgelaufen – bitte neu verbinden.' : `Sync fehlgeschlagen (${resp.status}).`;
+        if (resp.status === 401) setStravaToken(null);
+      } else {
+        const data = await resp.json();
+        if (data.refresh_token) setStravaToken(data.refresh_token);
+        const res = processStravaActivities(data.activities || []);
+        stravaStatus = (res.logged || res.checked)
+          ? `${res.logged} Aktivität${res.logged === 1 ? '' : 'en'} geloggt · ${res.checked} Aufgabe${res.checked === 1 ? '' : 'n'} abgehakt`
+          : 'Keine neuen Aktivitäten heute.';
+        save();
+      }
+    } catch (e) {
+      stravaStatus = 'Sync-Fehler (offline?).';
+    }
+    stravaSyncing = false; render();
+  }
+
+  /* Refresh-Token/Fehler aus dem URL-Fragment nach dem OAuth-Redirect übernehmen. */
+  function handleStravaHash() {
+    const h = location.hash || '';
+    if (h.startsWith('#strava-refresh=')) {
+      const tok = decodeURIComponent(h.slice('#strava-refresh='.length));
+      if (tok) { setStravaToken(tok); stravaStatus = 'Mit Strava verbunden ✓'; activeTab = 'calendar'; calView = 'tag'; calCursor = todayStr(); }
+      history.replaceState(null, '', location.pathname + location.search);
+    } else if (h.startsWith('#strava-error=')) {
+      stravaStatus = 'Strava-Fehler: ' + decodeURIComponent(h.slice('#strava-error='.length));
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+
+  handleStravaHash();
   auditAllStreaks();
   save();
   render();

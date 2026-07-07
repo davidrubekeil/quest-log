@@ -1,7 +1,7 @@
 /* Quest-Log — Service Worker
    Cache-first für die App-Shell; bei neuer Version CACHE-Namen hochzählen. */
 
-const CACHE = 'questlog-cache-v27';
+const CACHE = 'questlog-cache-v28';
 
 const ASSETS = [
   './',
@@ -30,6 +30,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // Netlify-Functions (Strava-OAuth/-Sync) nie aus dem Cache bedienen oder abfangen.
+  if (new URL(e.request.url).pathname.startsWith('/.netlify/')) return;
   e.respondWith(
     caches.match(e.request).then(cached =>
       cached ||
