@@ -976,7 +976,7 @@
      nicht mehr existiert oder inzwischen an einem anderen Tag liegt (z. B. verschoben). */
   function resolveTopTask(ref, dateStr) {
     if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || s.deadline !== dateStr) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s) }; }
-    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || sub.scheduledDate !== dateStr) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub) }; }
+    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || sub.scheduledDate !== dateStr) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub), subs: sub.subs }; }
     if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || a.date !== dateStr) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs }; }
     return null;
   }
