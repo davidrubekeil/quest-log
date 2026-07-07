@@ -337,6 +337,33 @@
   }
   function save() { try { localStorage.setItem(KEY_SAVE, JSON.stringify(state)); } catch (e) { console.warn('Quest-Log: Speichern fehlgeschlagen', e); } }
 
+  /* ---------- Datensicherung (Export/Import als JSON-Datei) ---------- */
+
+  function exportData() {
+    try {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `questlog-backup-${todayStr()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      backupStatus = `Gesichert: questlog-backup-${todayStr()}.json`;
+    } catch (e) { backupStatus = 'Export fehlgeschlagen.'; }
+  }
+
+  function importData(text) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (e) { backupStatus = 'Datei ist kein gültiges JSON.'; render(); return; }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) { backupStatus = 'Keine gültige Sicherungsdatei.'; render(); return; }
+    const n = Array.isArray(parsed.quests) ? parsed.quests.length : 0;
+    if (!confirm(`Sicherung importieren? Deine aktuellen Daten in diesem Browser werden vollständig ersetzt (Datei enthält ${n} Quest${n === 1 ? '' : 's'}).`)) return;
+    state = sanitizeState(parsed);
+    activeQuestId = null; activeStepId = null; activeEventId = null;
+    save();
+    backupStatus = 'Sicherung wiederhergestellt ✓';
+    render();
+  }
+
   /* ---------- Kalender-Aggregation ---------- */
 
   function collectEntries() {
@@ -525,6 +552,7 @@
   let dayStamp = todayStr();
   let refocusSel = null;
   let pendingEditSel = null;
+  let backupStatus = '';
 
   const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
   const sectionOptions = sel => SECTIONS.map(s => `<option value="${s.key}"${s.key === sel ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
@@ -859,7 +887,16 @@
       <button data-action="archive-tab" data-tab="quests" class="${archiveTab === 'quests' ? 'active' : ''}">Quests<span class="seg-count">${doneCount}</span></button>
       <button data-action="archive-tab" data-tab="journal" class="${archiveTab === 'journal' ? 'active' : ''}">Journal<span class="seg-count">${journalCount}</span></button>
     </div>`;
-    return `<div class="board-title">Archiv</div>${tabs}${archiveTab === 'journal' ? renderJournal() : renderArchive()}`;
+    const backup = `<div class="backup-bar">
+      <div class="dash-label">Datensicherung</div>
+      <div class="backup-actions">
+        <button class="backup-btn" data-action="export-data">Sichern (Download)</button>
+        <button class="backup-btn ghost" data-action="import-data">Wiederherstellen …</button>
+      </div>
+      ${backupStatus ? `<div class="backup-status">${esc(backupStatus)}</div>` : ''}
+      <div class="backup-hint">Lädt alle Quests, Aufgaben, Events, Listen und das Journal als Datei herunter. Die Strava-Verbindung ist nicht enthalten (bei Bedarf einmal neu verbinden).</div>
+    </div>`;
+    return `<div class="board-title">Archiv</div>${tabs}${archiveTab === 'journal' ? renderJournal() : renderArchive()}${backup}`;
   }
 
   /* --- Events (zweispaltig: Liste + Kontext) --- */
@@ -1273,6 +1310,8 @@
     // Strava: eigener async-Ablauf, umgeht das synchrone save()+render() am Ende.
     if (action === 'strava-connect') { window.location.href = '/.netlify/functions/strava-connect'; return; }
     if (action === 'strava-sync') { stravaSync(el.dataset.date); return; }
+    if (action === 'export-data') { exportData(); render(); return; }
+    if (action === 'import-data') { const inp = document.getElementById('import-file'); if (inp) inp.click(); return; }
 
     switch (action) {
       case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
@@ -1446,6 +1485,16 @@
   });
 
   tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; activeEventId = null; render(); });
+
+  const importInput = document.getElementById('import-file');
+  if (importInput) importInput.addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { importData(String(reader.result)); importInput.value = ''; };
+    reader.onerror = () => { backupStatus = 'Datei konnte nicht gelesen werden.'; importInput.value = ''; render(); };
+    reader.readAsText(file);
+  });
 
   function onReturn() { if (document.visibilityState !== 'visible') return; const ch = auditAllStreaks(); if (ch || dayStamp !== todayStr()) { dayStamp = todayStr(); if (ch) save(); render(); } }
   document.addEventListener('visibilitychange', onReturn);

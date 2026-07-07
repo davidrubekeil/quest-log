@@ -1085,6 +1085,25 @@ input { font: inherit; color: inherit; }
 .day-notes-block { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--hair); max-width: 620px; }
 .day-notes-block .dash-scratch { position: static; }
 
+/* Datensicherung im Archiv */
+.backup-bar { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--rule); max-width: 640px; }
+.backup-actions { display: flex; gap: 12px; margin: 4px 0 8px; }
+.backup-btn {
+  padding: 7px 14px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  transition: opacity 0.12s;
+}
+.backup-btn:hover { opacity: 0.85; }
+.backup-btn.ghost { color: var(--ink); background: transparent; }
+.backup-btn.ghost:hover { background: var(--hair); opacity: 1; }
+.backup-status { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.backup-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
 /* Journal im Archiv: ein Block pro Tag */
 .archive.journal { max-width: 640px; }
 .journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
