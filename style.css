@@ -1064,6 +1064,23 @@ input { font: inherit; color: inherit; }
 .scratch-item.activity strong { color: var(--ink); font-weight: 600; }
 .add-scratch { margin-top: 10px; }
 
+/* Zitat des Tages */
+.dash-quote { margin: 2px 0 24px; padding: 14px 0 16px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+.quote-text { font-size: 14px; line-height: 1.6; font-style: italic; color: var(--ink); }
+.quote-src { margin-top: 8px; font-size: 11px; letter-spacing: 0.04em; color: var(--muted); }
+
+/* Routinen mit Streak */
+.dash-routines { margin-bottom: 26px; }
+.routine-list { list-style: none; margin: 4px 0 0; }
+.routine-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.routine-row .row-text { flex: 1; min-width: 0; font-size: 13px; }
+.routine-row.done .row-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--rule); }
+.routine-streak { flex: none; display: inline-flex; align-items: center; gap: 2px; font-family: var(--mono); font-size: 11px; color: var(--rule); }
+.routine-streak .ico { width: 12px; height: 12px; }
+.routine-streak.on { color: #E06B3B; }
+.routine-streak.on .ico { fill: currentColor; }
+.routine-row:hover .del { opacity: 0.4; }
+
 /* Strava-Sync am Dashboard */
 .strava-box { margin-bottom: 22px; }
 .strava-btn {

@@ -1,0 +1,1378 @@
+{
+  "version": 3,
+  "lists": [
+    {
+      "id": "mr8492tsvckp36",
+      "name": "Packliste",
+      "open": false,
+      "items": [
+        {
+          "id": "mr849hjt1xyl27",
+          "text": "PC + Zubehör aus der Uni",
+          "done": false
+        },
+        {
+          "id": "mr849lz40sn0vt",
+          "text": "Sportzeug",
+          "done": false
+        },
+        {
+          "id": "mr849tuh7dwu91",
+          "text": "Klamotten",
+          "done": false
+        },
+        {
+          "id": "mr84a1um8td1w4",
+          "text": "Kosmetik",
+          "done": false
+        },
+        {
+          "id": "mr84acbqalme6d",
+          "text": "Bücher etc.",
+          "done": false
+        },
+        {
+          "id": "mr84aix4yb0pe5",
+          "text": "Supplements",
+          "done": false
+        }
+      ]
+    }
+  ],
+  "quests": [
+    {
+      "id": "mr7tn3q4irly7z",
+      "title": "Heimat in Serie",
+      "category": "main",
+      "section": "studium",
+      "type": "laufend",
+      "notes": "Hölz durch Termine im Sommer verhindert: 1.-9.7., 12.-23.7., 27.7., 12.-21.8.",
+      "done": false,
+      "doneAt": null,
+      "priority": "hoch",
+      "createdAt": "2026-07-05",
+      "start": "2026-03-02",
+      "deadline": "2027-04-09",
+      "milestones": [
+        {
+          "id": "mr8ecy5xtk168c",
+          "text": "00 Einleitung fertig",
+          "deadline": null
+        },
+        {
+          "id": "mr8edk32fc3vr4",
+          "text": "01 Kontext fertig",
+          "deadline": null
+        },
+        {
+          "id": "mr8edry59g81dr",
+          "text": "02 Serieller Holzbau fertig",
+          "deadline": "2026-07-17"
+        }
+      ],
+      "nextStepId": "mr9f6yr4yrrpw6",
+      "steps": [
+        {
+          "id": "mr7to1bxtd39b9",
+          "text": "Layout in Indesign",
+          "type": "laufend",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr7toldg76au24",
+              "text": "Paginierung",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr7tp1dbsvxuud",
+              "text": "Marginalspalten anpassen",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": false
+        },
+        {
+          "id": "mr7trt6c6ip1bs",
+          "text": "Kapitel",
+          "type": "laufend",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr7tsahpah5ay1",
+              "text": "00 Einleitung",
+              "done": false,
+              "doneAt": null,
+              "subs": [
+                {
+                  "id": "mr7ttkat1e09t9",
+                  "text": "Quellenlage entsprechend Forschungsstand",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr7ttn2gha72ad",
+                  "text": "Danksagung",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                }
+              ],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr7tsd9muhzhi5",
+              "text": "01 Kontext",
+              "done": false,
+              "doneAt": null,
+              "subs": [
+                {
+                  "id": "mr7ttsb31rkhll",
+                  "text": "01.1",
+                  "done": true,
+                  "doneAt": "2026-07-05T13:28:27.479Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr7ttu3rsbd39j",
+                  "text": "01.2",
+                  "done": true,
+                  "doneAt": "2026-07-05T13:28:27.987Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr7ttvjaxrv3lo",
+                  "text": "01.3",
+                  "done": true,
+                  "doneAt": "2026-07-05T13:28:29.110Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr7tuceqdvbkfa",
+                  "text": "Korrekturen übernehmen und zusammenführen",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                }
+              ],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr7tsmm6k2uqtd",
+              "text": "02 Serieller und Industrieller Holzbau",
+              "done": false,
+              "doneAt": null,
+              "subs": [
+                {
+                  "id": "mr7tun3e7htrk5",
+                  "text": "Einleitung schreiben",
+                  "done": true,
+                  "doneAt": "2026-07-05T17:55:38.562Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr7tuwjx4gwby4",
+                  "text": "Kapitel Frameworks",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [
+                    {
+                      "id": "mr7tuzrynanoe6",
+                      "text": "02.1",
+                      "done": true,
+                      "doneAt": "2026-07-07T12:16:13.127Z",
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mr7tv1nwnjpmqx",
+                      "text": "02.2",
+                      "done": true,
+                      "doneAt": "2026-07-07T12:25:58.750Z",
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mr7tv2vk6wktwy",
+                      "text": "02.3",
+                      "done": true,
+                      "doneAt": "2026-07-07T12:25:59.618Z",
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    }
+                  ],
+                  "open": true,
+                  "scheduledDate": "2026-07-07"
+                },
+                {
+                  "id": "mr7tv9dybes8ef",
+                  "text": "Kapitel prompten",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [
+                    {
+                      "id": "mr7tvcjojyjot4",
+                      "text": "02.1",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mr7tvh7c1b82f5",
+                      "text": "02.2",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mr7tvkx51kd8nq",
+                      "text": "02.3",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    }
+                  ],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mrami7xvkben4g",
+                  "text": "Kapitel schreiben",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [
+                    {
+                      "id": "mramijn71ko54x",
+                      "text": "02.1",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mramikr3e3msru",
+                      "text": "02.2",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    },
+                    {
+                      "id": "mramim4n4pvuzd",
+                      "text": "02.3",
+                      "done": false,
+                      "doneAt": null,
+                      "subs": [],
+                      "open": false,
+                      "scheduledDate": null
+                    }
+                  ],
+                  "open": false,
+                  "scheduledDate": null
+                }
+              ],
+              "open": true,
+              "scheduledDate": null
+            }
+          ],
+          "open": true
+        },
+        {
+          "id": "mr7tzf0t4gh7cd",
+          "text": "Feldarbeit",
+          "type": "frist",
+          "deadline": "2026-08-30",
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr8f7ma7k8l9zy",
+              "text": "Anfragen Lindau",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": true
+        },
+        {
+          "id": "mr8f6s6t9oapew",
+          "text": "Abbildungen",
+          "type": "laufend",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr8f74rqbj6vmu",
+              "text": "02 Serieller Holzbau",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": false
+        },
+        {
+          "id": "mr9f6yr4yrrpw6",
+          "text": "Hölz schreiben",
+          "type": "frist",
+          "deadline": "2026-07-07",
+          "notes": "in den letzten wochen vor semesterende nicht so viel fortschritt da andere seminare fertig und pre diploma finals vorbereiten - habe vorletzte woche pre diploma finals im hochbau institut gehabt - dort gutes feedback (interessante arbeit und thema) und anregungen für die praktische arbeit bekommen - crits gleiche meinung: kontext mit geschichte etc. etwas eindampfen, dafür holzbauaspekte mehr in fokus und auch illustrieren - jetzt nach den finals punkt zum seriellen holzbau überarbeiten und \"feldarbeit\" in lindau planen, da ich freitag an bodensee fahre - bei fragen auch über whatsapp oder besser über mail erreichbar? evtl treffen am bodensee",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr9rm3fxv0j8gl",
+              "text": "Termine des Sommers abchecken",
+              "done": true,
+              "doneAt": "2026-07-07T09:50:22.498Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": "2026-07-07"
+            },
+            {
+              "id": "mr9rmgk74jn7bi",
+              "text": "Mail / Whatsapp",
+              "done": true,
+              "doneAt": "2026-07-07T13:10:12.334Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": "2026-07-07"
+            }
+          ],
+          "open": true
+        }
+      ],
+      "streak": {
+        "currentStreak": 3,
+        "longestStreak": 3,
+        "lastActiveDate": "2026-07-07"
+      }
+    },
+    {
+      "id": "mr7ve8i07py6op",
+      "title": "Hütte am Ettenberg",
+      "category": "main",
+      "section": "kreatives",
+      "type": "laufend",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": "2027-07-31",
+      "milestones": [],
+      "nextStepId": "mr7vk1crrqmlvd",
+      "steps": [
+        {
+          "id": "mr7vk1crrqmlvd",
+          "text": "Konzept",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        },
+        {
+          "id": "mr7vk3w1ulo9ds",
+          "text": "Entwurf",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        },
+        {
+          "id": "mr7vk729ytr27r",
+          "text": "Ausführung",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 0,
+        "longestStreak": 0,
+        "lastActiveDate": null
+      }
+    },
+    {
+      "id": "mr7vtfj3rwu7yz",
+      "title": "Anrechnungen",
+      "category": "main",
+      "section": "buero",
+      "type": "frist",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "hoch",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": "2026-07-09",
+      "milestones": [],
+      "nextStepId": "mr7vums3gnom4g",
+      "steps": [
+        {
+          "id": "mr7vtv01zf3bkh",
+          "text": "Termin Prüfungsreferat",
+          "type": "frist",
+          "deadline": "2026-07-06",
+          "notes": "",
+          "done": true,
+          "doneAt": "2026-07-06T11:51:36.473Z",
+          "subs": [],
+          "open": false
+        },
+        {
+          "id": "mr7vums3gnom4g",
+          "text": "FV ects beantragen",
+          "type": "frist",
+          "deadline": "2026-07-09",
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr90u814yxh4g1",
+              "text": "bei Joris anfragen",
+              "done": true,
+              "doneAt": "2026-07-06T09:36:19.230Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr90udfihsfksq",
+              "text": "Antrag einreichen",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": "2026-07-09"
+            }
+          ],
+          "open": true
+        },
+        {
+          "id": "mr90pv748on4ln",
+          "text": "Termin Prüfungsreferat",
+          "type": "frist",
+          "deadline": "2026-07-09",
+          "notes": "11:00 Uhr\n",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": true
+        },
+        {
+          "id": "mr9104cfoom7ab",
+          "text": "Praktikumszeugnis mitnehmen",
+          "type": "frist",
+          "deadline": "2026-07-09",
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": true
+        }
+      ],
+      "streak": {
+        "currentStreak": 1,
+        "longestStreak": 1,
+        "lastActiveDate": "2026-07-06"
+      }
+    },
+    {
+      "id": "mr7vwfjpn80utv",
+      "title": "Termin Wefing",
+      "category": "side",
+      "section": "buero",
+      "type": "frist",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": null,
+      "milestones": [],
+      "nextStepId": "mraskilhenxfmj",
+      "steps": [
+        {
+          "id": "mrask2vliseb3b",
+          "text": "Termin ausmachen",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": true,
+          "doneAt": "2026-07-07T15:16:36.051Z",
+          "subs": [],
+          "open": false
+        },
+        {
+          "id": "mraskilhenxfmj",
+          "text": "Termin",
+          "type": "laufend",
+          "deadline": "2026-07-23",
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mrasldy1y1rzkv",
+              "text": "09:00 Sprechstunde",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": "2026-07-23"
+            }
+          ],
+          "open": true
+        }
+      ],
+      "streak": {
+        "currentStreak": 1,
+        "longestStreak": 1,
+        "lastActiveDate": "2026-07-07"
+      }
+    },
+    {
+      "id": "mr7vwkburyb2ec",
+      "title": "Termin Fiegle",
+      "category": "side",
+      "section": "buero",
+      "type": "frist",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": null,
+      "milestones": [],
+      "nextStepId": null,
+      "steps": [],
+      "streak": {
+        "currentStreak": 0,
+        "longestStreak": 0,
+        "lastActiveDate": null
+      }
+    },
+    {
+      "id": "mr7w0kghyz8woc",
+      "title": "Reuse the Kiln",
+      "category": "main",
+      "section": "studium",
+      "type": "frist",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "mittel",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": "2026-08-30",
+      "milestones": [],
+      "nextStepId": "mr7w199l871auo",
+      "steps": [
+        {
+          "id": "mr7w199l871auo",
+          "text": "Anmeldung abklären mit Exner und gegebenenfalls anmelden",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 1,
+        "longestStreak": 1,
+        "lastActiveDate": "2026-07-06"
+      }
+    },
+    {
+      "id": "mr7w5n9laeoqh3",
+      "title": "Muscle Up",
+      "category": "skill",
+      "section": "kreatives",
+      "type": "laufend",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": null,
+      "milestones": [],
+      "nextStepId": "mr8eld989wiu4e",
+      "steps": [
+        {
+          "id": "mr8eld989wiu4e",
+          "text": "Progression definieren",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 0,
+        "longestStreak": 0,
+        "lastActiveDate": null
+      }
+    },
+    {
+      "id": "mr7w72s7sj938a",
+      "title": "Handstand Press",
+      "category": "skill",
+      "section": "kreatives",
+      "type": "laufend",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": null,
+      "milestones": [],
+      "nextStepId": "mr8elkj262gyfo",
+      "steps": [
+        {
+          "id": "mr8elkj262gyfo",
+          "text": "Progression definieren",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 0,
+        "longestStreak": 0,
+        "lastActiveDate": null
+      }
+    },
+    {
+      "id": "mr7w7dggqkcpry",
+      "title": "Questlog",
+      "category": "main",
+      "section": "kreatives",
+      "type": "laufend",
+      "notes": "Updates: anwendungsbasierte Schritte\nKonzept: Grafik und Referenzen\n",
+      "done": false,
+      "doneAt": null,
+      "priority": "niedrig",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": null,
+      "milestones": [],
+      "nextStepId": "mr82ieljnvs2eb",
+      "steps": [
+        {
+          "id": "mr82ieljnvs2eb",
+          "text": "Updates",
+          "type": "laufend",
+          "deadline": null,
+          "notes": "ROADMAP:\n- Tages-Startseite fertig einrichten\n\n\n",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr83pn0gumuacp",
+              "text": "\"Events\"-Reiter im Questlog hinzufügen - das sind nur kalendarische Einträge ohne Prio oder Status und haben dazu nur ein Notizfeld bei Anklicken - in der Kalenderübersicht sollen mehrtägige Events mit einem durchlaufenden Strich verbunden werden",
+              "done": true,
+              "doneAt": "2026-07-05T23:24:15.053Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8482sduc64z7",
+              "text": "\"Erledigt\"-Reiter im Questlog für erledigte Quests, die alle ausgegraut in ihren Kategorien aufgelistet sind - mit Datum des Abschlusses",
+              "done": true,
+              "doneAt": "2026-07-05T23:24:17.474Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8ei1ifq6etj9",
+              "text": "Reiter für \"Skills / Goals\"",
+              "done": true,
+              "doneAt": "2026-07-06T10:53:56.177Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8f511tpjops1",
+              "text": "Layout",
+              "done": false,
+              "doneAt": null,
+              "subs": [
+                {
+                  "id": "mr8f5ibc5jlgrv",
+                  "text": "Prozent und Datumbalken gleiche Länge",
+                  "done": true,
+                  "doneAt": "2026-07-06T10:53:43.957Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr8f6ju2wffbpu",
+                  "text": "Einzug bei Namen der Events in einer Flucht",
+                  "done": true,
+                  "doneAt": "2026-07-06T10:51:37.798Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                }
+              ],
+              "open": true,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8fdckbblv50i",
+              "text": "in Events im Kontextfeld Option, um bestimmte Tagestasks einzufügen",
+              "done": true,
+              "doneAt": "2026-07-06T10:53:47.177Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8fg1yv9tlayx",
+              "text": "alle erledigten Schritte und Unterschritte innerhalb ihrer Hierarchie ausgegraut in \"Erledigt\" archivieren",
+              "done": true,
+              "doneAt": "2026-07-06T10:54:03.804Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr91efmdvyopx5",
+              "text": "Tagesstartseite einrichten",
+              "done": false,
+              "doneAt": null,
+              "subs": [
+                {
+                  "id": "mr95qot1bxxffk",
+                  "text": "Top 3 Tages-Quests",
+                  "done": true,
+                  "doneAt": "2026-07-06T16:12:32.485Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr95sc22dciqrq",
+                  "text": "Aufteilung in Tages-Tasks (Quests) und Events (Termine)",
+                  "done": true,
+                  "doneAt": "2026-07-06T16:12:40.059Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr962v82h0cyll",
+                  "text": "Zitat des Tages",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9bf17oj0t2su",
+                  "text": "Aufgaben bearbeitbar machen und auf nächsten Tag verschiebbar machen (falls nicht erledigt automatisch auf nächsten Tag)",
+                  "done": true,
+                  "doneAt": "2026-07-06T17:00:16.036Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9bfqchsokkap",
+                  "text": "Tagesaufgaben auch mit Unterschritten",
+                  "done": true,
+                  "doneAt": "2026-07-06T16:37:26.323Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9bgatf41pccj",
+                  "text": "Tagesroutinen-Übersicht mit Streak",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9bguisdw7jem",
+                  "text": "Fokus-Dashboard für aktiven Task (mit Pomodoro-Timer etc.)",
+                  "done": false,
+                  "doneAt": null,
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9bhh5um9tabc",
+                  "text": "Notizfeld für Gedanken in bulletpoints die lose einegtragen werden können",
+                  "done": true,
+                  "doneAt": "2026-07-06T17:20:28.871Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9ggmeyyfe6cw",
+                  "text": "Tagesaufgaben innerhalb eines Events können auch an einem Tag außerhalb des Events stattfinden (davor zumindest)",
+                  "done": true,
+                  "doneAt": "2026-07-06T17:20:33.337Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                },
+                {
+                  "id": "mr9gv0q98vrtd0",
+                  "text": "Verschieben auf nächsten Tag, Umbenennen und zu Top-Aufgaben hinzufügen auch bei Tagen in der Zukunft",
+                  "done": true,
+                  "doneAt": "2026-07-06T17:20:40.363Z",
+                  "subs": [],
+                  "open": false,
+                  "scheduledDate": null
+                }
+              ],
+              "open": true,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr91est9rmsr0m",
+              "text": "Verschieben von Quests in Main, Side, Event oder Skill",
+              "done": true,
+              "doneAt": "2026-07-06T10:54:10.997Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr95u2oyjxm597",
+              "text": "Dependencies bei Milestones und Schritten wie bei Tagesstartseite und Schritten",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr95ujr3b27owh",
+              "text": "Flucht von Schritten einrücken",
+              "done": true,
+              "doneAt": "2026-07-06T16:40:14.766Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr9c9a76v53rh7",
+              "text": "Mobile-Implementierung: nur Kalender- und Tagesfunktion",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr9hu5etuiiqy2",
+              "text": "Im Eventreiter Kategorie \"Überlegungen\"",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr9hxxoht29q5k",
+              "text": "Unterschritte eines Schrittes einer Quest sollen mit Datumsauswahl eine Tagesaufgabe auf dem Dashboard werden können",
+              "done": true,
+              "doneAt": "2026-07-07T10:33:23.512Z",
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr9t5lgph4zo92",
+              "text": "neben Kalender, Quests und Listen noch Archiv, wo erledigte Quests (statt Erledigt-Reiter) und Gedanken / Notizen aus dem Dashboard als Journal abgespeichert werden",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": true
+        },
+        {
+          "id": "mr83w7v2mz3b6k",
+          "text": "Konzept",
+          "type": "laufend",
+          "deadline": null,
+          "notes": "Hier geht es um die grafische und referenzielle Ausgestaltung\n",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr83wumbilv7iu",
+              "text": "Individualisierung der Kategorien und Reiter",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 3,
+        "longestStreak": 3,
+        "lastActiveDate": "2026-07-07"
+      }
+    },
+    {
+      "id": "mr7ybm9abdxzx5",
+      "title": "i.sd Seminararbeit",
+      "category": "side",
+      "section": "studium",
+      "type": "frist",
+      "notes": "",
+      "done": false,
+      "doneAt": null,
+      "priority": "mittel",
+      "createdAt": "2026-07-05",
+      "start": null,
+      "deadline": "2026-07-31",
+      "milestones": [],
+      "nextStepId": "mr8419csnjogag",
+      "steps": [
+        {
+          "id": "mr840lhx8sua24",
+          "text": "Konzept und Framework definieren",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": true,
+          "doneAt": "2026-07-05T18:15:29.040Z",
+          "subs": [],
+          "open": false
+        },
+        {
+          "id": "mr8419csnjogag",
+          "text": "Research und Iteration",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr8432pxz0shuf",
+              "text": "Fallbeispiel raussuchen",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            },
+            {
+              "id": "mr8egt64cqyy6y",
+              "text": "Methode definieren und prompten",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": false
+        },
+        {
+          "id": "mr843txvv1h54w",
+          "text": "Ausführung der Seminararbeit",
+          "type": "frist",
+          "deadline": null,
+          "notes": "",
+          "done": false,
+          "doneAt": null,
+          "subs": [
+            {
+              "id": "mr8447cq6xbtp4",
+              "text": "Template runterladen",
+              "done": false,
+              "doneAt": null,
+              "subs": [],
+              "open": false,
+              "scheduledDate": null
+            }
+          ],
+          "open": false
+        }
+      ],
+      "streak": {
+        "currentStreak": 0,
+        "longestStreak": 1,
+        "lastActiveDate": "2026-07-05"
+      }
+    }
+  ],
+  "agenda": [
+    {
+      "id": "mr83ajfepx9xhg",
+      "text": "Flur putzen",
+      "date": "2026-07-06",
+      "done": true,
+      "doneAt": "2026-07-06T15:35:38.984Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr83alx7w0e9cj",
+      "text": "Gym",
+      "date": "2026-07-06",
+      "done": true,
+      "doneAt": "2026-07-06T14:26:42.997Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr92is2mqxak25",
+      "text": "Rasieren",
+      "date": "2026-07-07",
+      "done": true,
+      "doneAt": "2026-07-07T15:18:27.824Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr96bz7532k2z1",
+      "text": "Einkaufen",
+      "date": "2026-07-06",
+      "done": true,
+      "doneAt": "2026-07-06T15:35:35.657Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9bd8i81e2603",
+      "text": "Friseurtermin ausmachen",
+      "date": "2026-07-07",
+      "done": true,
+      "doneAt": "2026-07-07T15:18:26.212Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9bddijjkcr9a",
+      "text": "Friseur",
+      "date": "2026-07-08",
+      "done": false,
+      "doneAt": null,
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9bdf4x2avhts",
+      "text": "Gym",
+      "date": "2026-07-08",
+      "done": false,
+      "doneAt": null,
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9fg4ws08z4za",
+      "text": "Dashboard fertig",
+      "date": "2026-07-06",
+      "done": true,
+      "doneAt": "2026-07-06T17:20:09.952Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9g377jkczlem",
+      "text": "Hao Wei Dao reservieren",
+      "date": "2026-07-07",
+      "done": true,
+      "doneAt": "2026-07-07T09:49:41.822Z",
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9hpjped8cq6n",
+      "text": "Packen für daheim",
+      "date": "2026-07-10",
+      "done": false,
+      "doneAt": null,
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9hpoyz87pk4e",
+      "text": "Gym",
+      "date": "2026-07-10",
+      "done": false,
+      "doneAt": null,
+      "eventId": null,
+      "subs": []
+    },
+    {
+      "id": "mr9hradd44pu3o",
+      "text": "PC aus Koje",
+      "date": "2026-07-10",
+      "done": false,
+      "doneAt": null,
+      "eventId": null,
+      "subs": []
+    }
+  ],
+  "events": [
+    {
+      "id": "mr8evqyerl6gha",
+      "name": "Rad am Ring",
+      "start": "2026-07-24",
+      "end": "2026-07-26",
+      "multiDay": true,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr8exuq9z59o2i",
+      "name": "Bikepacking Freiburg",
+      "start": "2026-08-06",
+      "end": "2026-08-10",
+      "multiDay": true,
+      "notes": "Rückfahrt muss noch gebucht werden\n",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr8eyuk6ddvu5d",
+      "name": "Winzerfest",
+      "start": "2026-08-14",
+      "end": "2026-08-15",
+      "multiDay": true,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr8f009m2ysbut",
+      "name": "Hopfenwandertag",
+      "start": "2026-08-02",
+      "end": null,
+      "multiDay": false,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr8f1pifamnl8z",
+      "name": "Schweizer Besuch",
+      "start": "2026-08-21",
+      "end": "2026-08-23",
+      "multiDay": true,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr8f39rspqi0lb",
+      "name": "Halbmarathon Kressbronn",
+      "start": "2026-09-19",
+      "end": null,
+      "multiDay": false,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr92wtpftttpwx",
+      "name": "Rennrad Oberammergau",
+      "start": "2026-07-11",
+      "end": "2026-07-12",
+      "multiDay": true,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr9gb61p5b2dil",
+      "name": "WM-Abend",
+      "start": "2026-07-06",
+      "end": null,
+      "multiDay": false,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    },
+    {
+      "id": "mr9gc5jllg1ky5",
+      "name": "Hao Wei Dao mit Anna",
+      "start": "2026-07-07",
+      "end": null,
+      "multiDay": false,
+      "notes": "",
+      "startTime": "18:00",
+      "endTime": "00:00"
+    },
+    {
+      "id": "mr9hpyrvzpp980",
+      "name": "Eltern in Innsbruck",
+      "start": "2026-07-10",
+      "end": null,
+      "multiDay": false,
+      "notes": "",
+      "startTime": null,
+      "endTime": null
+    }
+  ],
+  "focusQuestId": "mr7tn3q4irly7z",
+  "topTasks": {
+    "2026-07-09": [
+      {
+        "kind": "qsub",
+        "questId": "mr7vtfj3rwu7yz",
+        "stepId": "mr7vums3gnom4g",
+        "subId": "mr90udfihsfksq"
+      },
+      {
+        "kind": "qstep",
+        "questId": "mr7vtfj3rwu7yz",
+        "stepId": "mr90pv748on4ln"
+      },
+      {
+        "kind": "qstep",
+        "questId": "mr7vtfj3rwu7yz",
+        "stepId": "mr9104cfoom7ab"
+      }
+    ],
+    "2026-07-07": [
+      {
+        "kind": "qsub",
+        "questId": "mr7tn3q4irly7z",
+        "stepId": "mr9f6yr4yrrpw6",
+        "subId": "mr9rm3fxv0j8gl"
+      },
+      {
+        "kind": "qsub",
+        "questId": "mr7tn3q4irly7z",
+        "stepId": "mr7trt6c6ip1bs",
+        "subId": "mr7tuwjx4gwby4"
+      }
+    ]
+  },
+  "journal": {
+    "2026-07-07": {
+      "notes": [
+        {
+          "id": "mrat6uloz932o4",
+          "text": "Tag daheim, Questlog und Dashboard soweit fertig gebaut"
+        },
+        {
+          "id": "mrat88dsn20roz",
+          "text": "wieder in Diploma reingestartet, Framework angelegt und die nächsten Schritte geplant"
+        }
+      ],
+      "activities": []
+    },
+    "2026-07-06": {
+      "notes": [
+        {
+          "id": "mrathopd4efri5",
+          "text": "Questlog / Dashboard gebaut"
+        },
+        {
+          "id": "mrathus175gkjp",
+          "text": "Gym guten Pushday gehabt"
+        },
+        {
+          "id": "mratijaw192d96",
+          "text": "Abends mit Paddy und David bei uns mal wieder entspannten Abend mit Pizza machen und Spanien Portugal schauen"
+        }
+      ],
+      "activities": []
+    }
+  }
+}

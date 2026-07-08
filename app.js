@@ -88,6 +88,42 @@
   /* Tagesüberschrift ohne Monat/Jahr (die stehen bereits in der Kalender-Kopfzeile). */
   const dayTitle = d => `${WD_FULL[wdIndexMon(d)]}, der ${d.getDate()}.`;
 
+  /* ---------- Zitat des Tages (rotiert deterministisch pro Kalendertag) ---------- */
+
+  const QUOTES = [
+    { t: `Prüfe, ob es die Dinge betrifft, die in unserer eigenen Macht stehen, oder jene, die es nicht tun; und wenn es etwas außerhalb deiner Macht betrifft, sei bereit zu sagen, dass es dich nichts angeht.`, s: `Epiktet, Enchiridion` },
+    { t: `Verlange nicht, dass die Ereignisse so geschehen, wie du es wünschst; sondern wünsche, dass sie so geschehen, wie sie geschehen, und es wird dir gut ergehen.`, s: `Epiktet, Enchiridion` },
+    { t: `Überall zu sein, bedeutet nirgendwo zu sein.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Lass jede Handlung auf ein Ziel gerichtet und in ihrer Art vollkommen sein.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Bedenke bei jeder Angelegenheit, was vorausgeht und was folgt, und dann unternimm sie.`, s: `Epiktet, Enchiridion` },
+    { t: `Wer also frei sein will, der soll nichts wünschen und nichts ablehnen, das von anderen abhängt; andernfalls muss er zwangsläufig ein Sklave sein.`, s: `Epiktet, Enchiridion` },
+    { t: `Was vorbeifliegt, muss ergriffen werden.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Der eigene Geist ist der am meisten von Lärm befreite Ort der Welt, wenn die Gedanken eines Mannes so beschaffen sind, dass sie ihm vollkommene innere Ruhe sichern.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Ein Mensch kann selten unglücklich sein, weil er die Gedanken eines anderen nicht kennt; aber wer nicht auf die Regungen seiner eigenen achtet, ist gewiss unglücklich.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Denke bei jedem Vorfall daran, dich dir selbst zuzuwenden und zu prüfen, welche Fähigkeit du hast, um damit umzugehen.`, s: `Epiktet, Enchiridion` },
+    { t: `Nichts ist unglücklicher als die Neugier des Menschen, der überall umherschweift... aber nicht bedenkt, dass es ausreicht, die Göttlichkeit in sich selbst zu verehren.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Der weise Mann wird diese Dinge ertragen, aber nicht absichtlich die Konfrontation suchen; er wird den Frieden dem Krieg vorziehen.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Eine Veränderung des Charakters, nicht ein Tapetenwechsel, ist das, was du brauchst.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Eine ausgewogene Kombination beider Haltungen ist das, was wir wollen; der aktive Mensch sollte in der Lage sein, die Dinge gelassen zu nehmen, während der zur Ruhe neigende Mensch zum Handeln fähig sein sollte.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Trägt dies zu meinem Charakter bei?`, s: `Via Stoica, What is Eudaimonia?` },
+    { t: `Ein guter Charakter ist die einzige Garantie für ein ewiges, unbeschwertes Glück.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Beginne damit, dir selbst einen Charakter und ein Verhalten vorzuschreiben, das du sowohl allein als auch in Gesellschaft beibehalten kannst.`, s: `Epiktet, Enchiridion` },
+    { t: `Wenn du dich von der Vernunft leiten lässt und das, was vor dir liegt, mit Fleiß, Kraft und Maßhaltung bewältigst... dann wirst du ein glücklicher Mensch sein.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Sei bei nichts, was du tust, widerwillig, egoistisch, unbedacht oder leidenschaftlich.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Ich glaube, dass genauso wie körperliches Training vermeintlich unwillkürliche Muskeln in willkürliche verwandelt, eine ähnliche Transformation durch das Training des Geistes erreicht werden kann.`, s: `Yukio Mishima, Sun and Steel` },
+    { t: `Es bedarf nur eines moderaten Arbeitsaufwands, damit der Geist gedeiht und sich entwickelt. Kultiviere ein Kapital, das die Zeit selbst verbessert.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Nicht derjenige, der zu wenig hat, ist arm, sondern derjenige, der sich nach mehr sehnt.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Wenn du dein Leben nach der Natur gestaltest, wirst du niemals arm sein; wenn nach der Meinung der Menschen, wirst du niemals reich sein.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Wer wenig begehrt, braucht nur wenig. Derjenige hat seinen Wunsch erfüllt, dessen Wunsch es ist, genug zu haben.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Die großartige 'Fähigkeit' des großen Genies, für das selbst ewiges Leiden ein zu geringer Preis ist, ist der strenge Stolz des Künstlers.`, s: `Friedrich Nietzsche, The Birth of Tragedy` },
+    { t: `Erhebt eure Herzen, meine Brüder, hoch, höher! Und vergesst mir auch die Beine nicht! Erhebt auch eure Beine, ihr guten Tänzer, und besser noch: steht auch auf dem Kopf!`, s: `Friedrich Nietzsche, The Birth of Tragedy` },
+    { t: `Denn eine Schwalbe macht noch keinen Sommer, auch nicht ein einziger Tag; und so macht auch ein einziger Tag oder eine kurze Zeit einen Menschen nicht gesegnet und glücklich.`, s: `Aristoteles, Nicomachean Ethics` },
+    { t: `Gestalte alle deine Handlungen, Worte und Gedanken so, als könntest du in jedem Moment aus dem Leben scheiden.`, s: `Marcus Aurelius, Meditationes` },
+    { t: `Jeder Tag sollte daher so gestaltet werden, als wäre er derjenige, der das Schlusslicht bildet, der unser Leben abrundet und vollendet.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Derjenige, der dem Morgen ohne Sorge entgegensieht, kennt eine friedliche Unabhängigkeit und ein Glück, das alles andere übertrifft.`, s: `Seneca, Letters from a Stoic` },
+    { t: `Es ist deine Pflicht zu überlegen, wie du das meiste aus deinem Leben machen und das Vorhandene zum größten Vorteil nutzen kannst.`, s: `Platon (zitiert von Marcus Aurelius), Meditationes` },
+  ];
+
   /* ---------- Streak (intern) ---------- */
 
   const freshStreak = () => ({ currentStreak: 0, longestStreak: 0, lastActiveDate: null });
@@ -179,7 +215,15 @@
 
   /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {} });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {}, routines: [] });
+
+  /* Standard-Routinen bei allererster Verwendung (wenn noch nie ein routines-Feld existierte). */
+  const DEFAULT_ROUTINES = ['Journal (morgens)', 'Journal (abends)', 'Lesen', 'Chronik', 'Supplements'];
+  function normalizeRoutine(raw) {
+    if (typeof raw === 'string') return { id: uid(), title: raw, done: [] };
+    if (!raw || typeof raw !== 'object') return null;
+    return { id: raw.id || uid(), title: String(raw.title ?? ''), done: (Array.isArray(raw.done) ? raw.done : []).filter(isDateStr) };
+  }
 
   function normalizeItem(raw) {
     if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
@@ -309,6 +353,10 @@
         day.notes = day.notes.concat(migrated);
       }
     }
+
+    // Routinen: bestehende übernehmen, sonst (nie vorhanden) mit Standard-Routinen starten.
+    if (Array.isArray(raw.routines)) s.routines = raw.routines.map(normalizeRoutine).filter(r => r && r.title);
+    else s.routines = DEFAULT_ROUTINES.map(normalizeRoutine);
     return s;
   }
 
@@ -413,6 +461,29 @@
   function editJournalNote(date, id, text) { const n = journalNotes(date).find(n => n.id === id); if (n) n.text = text; }
   /* alle Journaltage mit Inhalt, neueste zuerst */
   const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length).sort((a, b) => a < b ? 1 : -1);
+
+  /* ---------- Routinen + Streaks (täglich) ---------- */
+
+  const routineDoneOn = (r, date) => r.done.includes(date);
+  function toggleRoutine(r, date) {
+    if (r.done.includes(date)) r.done = r.done.filter(d => d !== date);
+    else r.done.push(date);
+  }
+  /* aktueller Streak: aufeinanderfolgende erledigte Tage, endend heute oder gestern (sonst 0). */
+  function routineCurrentStreak(r) {
+    const set = new Set(r.done);
+    let anchor = set.has(todayStr()) ? todayStr() : (set.has(yesterdayStr()) ? yesterdayStr() : null);
+    if (!anchor) return 0;
+    let n = 0, d = anchor;
+    while (set.has(d)) { n++; d = addDays(d, -1); }
+    return n;
+  }
+  function routineLongestStreak(r) {
+    const dates = [...new Set(r.done)].sort();
+    let best = 0, run = 0, prev = null;
+    for (const d of dates) { run = (prev && dayDiff(prev, d) === 1) ? run + 1 : 1; best = Math.max(best, run); prev = d; }
+    return best;
+  }
 
   /* Strava-Aktivität → Journaleintrag */
   function stravaToEntry(a) {
@@ -1149,6 +1220,34 @@
     return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text"><strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}</span></li>`;
   }
 
+  /* Zitat des Tages — deterministisch pro Kalendertag, rotiert durch alle Zitate. */
+  function renderQuote() {
+    if (typeof QUOTES === 'undefined' || !QUOTES.length) return '';
+    const dayNum = Math.floor(parseDate(todayStr()).getTime() / 86400000);
+    const q = QUOTES[((dayNum % QUOTES.length) + QUOTES.length) % QUOTES.length];
+    return `<div class="dash-quote"><div class="quote-text">${esc(q.t)}</div>${q.s ? `<div class="quote-src">— ${esc(q.s)}</div>` : ''}</div>`;
+  }
+
+  /* Routinen mit Streak (nur heute abhakbar). */
+  function renderRoutines() {
+    const today = todayStr();
+    const rows = state.routines.map(r => {
+      const done = routineDoneOn(r, today);
+      const streak = routineCurrentStreak(r);
+      return `<li class="routine-row${done ? ' done' : ''}">
+        <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" aria-label="Abhaken">${ICONS.check}</button>
+        <span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>
+        <span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
+        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>
+      </li>`;
+    }).join('');
+    return `<div class="dash-routines">
+      <div class="dash-label">Routinen</div>
+      <ul class="routine-list">${rows || '<div class="empty">— keine Routinen —</div>'}</ul>
+      ${addMini('add-routine', 'Neue Routine')}
+    </div>`;
+  }
+
   function renderStravaBox(dateStr) {
     const connected = !!stravaToken();
     const btn = connected
@@ -1208,12 +1307,13 @@
     return `<div class="dashboard">
       <div class="dash-main">
         <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
+        ${isToday ? renderQuote() : ''}
         ${termine}
         ${topBox}
         ${overdueBox}
         ${tasksBox}
       </div>
-      <div class="dash-side">${isToday ? renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
+      <div class="dash-side">${isToday ? renderRoutines() + renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
     </div>`;
   }
 
@@ -1270,6 +1370,7 @@
       case 'ev-name': { const ev = state.events.find(x => x.id === ds.id); if (ev) ev.name = val; break; }
       case 'agenda-text': { const a = state.agenda.find(a => a.id === ds.id); if (a) a.text = val; break; }
       case 'scratch-text': { if (isDateStr(ds.date)) editJournalNote(ds.date, ds.id, val); break; }
+      case 'routine-title': { const r = state.routines.find(r => r.id === ds.id); if (r) r.title = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
       case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
     }
@@ -1393,6 +1494,8 @@
       case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
       case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
       case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
+      case 'toggle-routine': { const r = state.routines.find(r => r.id === id); if (r) toggleRoutine(r, todayStr()); break; }
+      case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
 
       default: return;
     }
@@ -1462,6 +1565,7 @@
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
       case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); const eventId = form.dataset.event || null; state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [], eventId }); refocusSel = `form[data-action="add-agenda"]${eventId ? `[data-event="${eventId}"]` : ''} input`; break; }
       case 'add-scratch': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); addJournalNote(date, text); refocusSel = `form[data-action="add-scratch"][data-date="${date}"] input`; break; }
+      case 'add-routine': { state.routines.push({ id: uid(), title: text, done: [] }); refocusSel = `form[data-action="add-routine"] input`; break; }
       case 'dash-add-agenda-sub': { const a = state.agenda.find(a => a.id === form.dataset.agenda); if (!a) return; a.subs.push({ id: uid(), text, done: false, doneAt: null }); refocusSel = `form[data-action="dash-add-agenda-sub"][data-agenda="${a.id}"] input`; break; }
       case 'dash-add-qsub': {
         const q = state.quests.find(q => q.id === form.dataset.quest);
