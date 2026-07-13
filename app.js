@@ -464,7 +464,7 @@
   const journalActs = date => (state.journal[date] && state.journal[date].activities) || [];
   function journalDayRW(date) { return state.journal[date] || (state.journal[date] = { notes: [], activities: [] }); }
   function journalPrune(date) { const d = state.journal[date]; if (d && !d.notes.length && !d.activities.length) delete state.journal[date]; }
-  function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text, at: nowHM() }); }
+  function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text }); }
   function delJournalNote(date, id) { const d = state.journal[date]; if (!d) return; d.notes = d.notes.filter(n => n.id !== id); journalPrune(date); }
   function editJournalNote(date, id, text) { const n = journalNotes(date).find(n => n.id === id); if (n) n.text = text; }
   /* alle Journaltage mit Inhalt, neueste zuerst */
@@ -1315,10 +1315,8 @@
     return `<div class="strava-box">${btn}${stravaStatus ? `<div class="strava-status">${esc(stravaStatus)}</div>` : ''}</div>`;
   }
 
-  /* Journal-Notiz-Zeile mit Uhrzeit (falls vorhanden). */
   function journalNoteRow(n, dateStr) {
-    const time = (typeof n.at === 'string' && n.at) ? `<span class="scratch-time">${esc(n.at)}</span>` : '';
-    return `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${time}${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
+    return `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
   }
 
   /* Journal-Feld pro Tag (Notizen + automatisch geloggte Strava-Aktivitäten). */
