@@ -31,6 +31,17 @@ exports.handler = async (event) => {
     const acts = await actResp.json();
     if (!Array.isArray(acts)) return json(502, { error: 'strava_error', detail: acts });
 
+    // Kraft-/Workout-Aktivitäten: Detail nachladen, um die Beschreibung (z. B. Sätze/Wdh.
+    // aus Hevy/Strong) mitzunehmen. Nur für diese Typen, um API-Aufrufe zu sparen.
+    const STRENGTH = new Set(['WeightTraining', 'Workout', 'Crossfit', 'HighIntensityIntervalTraining']);
+    const descById = {};
+    await Promise.all(acts.filter(a => STRENGTH.has(a.sport_type || a.type)).map(async a => {
+      try {
+        const dResp = await fetch(`https://www.strava.com/api/v3/activities/${a.id}`, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+        if (dResp.ok) { const detail = await dResp.json(); if (detail && typeof detail.description === 'string') descById[a.id] = detail.description; }
+      } catch (e) { /* Detail optional – bei Fehler ohne Beschreibung */ }
+    }));
+
     const activities = acts.map(a => ({
       id: a.id,
       name: a.name,
@@ -40,6 +51,7 @@ exports.handler = async (event) => {
       total_elevation_gain: a.total_elevation_gain, // m
       average_speed: a.average_speed,             // m/s
       start_date_local: a.start_date_local,
+      description: descById[a.id] || '',
     }));
 
     return json(200, { refresh_token: tok.refresh_token || refresh_token, activities });

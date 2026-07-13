@@ -66,6 +66,8 @@
     m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   const pad2 = n => String(n).padStart(2, '0');
   const nowISO = () => new Date().toISOString();
+  const nowHM = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  const hmFromISO = s => (typeof s === 'string' && s.length >= 16) ? s.slice(11, 16) : ''; // "…THH:MM…" → lokale Wanduhr
   const dateStr = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const todayStr = () => dateStr(new Date());
   const yesterdayStr = () => { const d = new Date(); d.setDate(d.getDate() - 1); return dateStr(d); };
@@ -269,13 +271,18 @@
     };
   }
   function normalizeEvent(raw) {
-    if (!raw || typeof raw !== 'object' || !isDateStr(raw.start)) return null;
+    if (!raw || typeof raw !== 'object') return null;
+    // Überlegung: undatiertes Event.
+    if (raw.undated === true) {
+      return { id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: null, end: null, multiDay: false, undated: true, notes: typeof raw.notes === 'string' ? raw.notes : '', startTime: null, endTime: null };
+    }
+    if (!isDateStr(raw.start)) return null;
     const end = isDateStr(raw.end) ? raw.end : null;
     const multiDay = raw.multiDay !== undefined ? !!raw.multiDay : !!(end && end > raw.start);
     return {
       id: raw.id || uid(), name: String(raw.name ?? raw.title ?? ''), start: raw.start,
       end: multiDay ? (end && end >= raw.start ? end : raw.start) : null,
-      multiDay,
+      multiDay, undated: false,
       notes: typeof raw.notes === 'string' ? raw.notes : '',
       startTime: multiDay ? null : (isTimeStr(raw.startTime) ? raw.startTime : null),
       endTime: multiDay ? null : (isTimeStr(raw.endTime) ? raw.endTime : null),
@@ -330,12 +337,13 @@
     }
 
     // Journal pro Tag: { [datum]: { notes:[{id,text}], activities:[…] } }.
-    const cleanNotes = arr => (Array.isArray(arr) ? arr : []).map(n => (n && typeof n === 'object' && (n.text ?? '') !== '') ? { id: n.id || uid(), text: String(n.text) } : null).filter(Boolean);
+    const cleanNotes = arr => (Array.isArray(arr) ? arr : []).map(n => (n && typeof n === 'object' && (n.text ?? '') !== '') ? { id: n.id || uid(), text: String(n.text), at: typeof n.at === 'string' ? n.at : null } : null).filter(Boolean);
     const cleanActs = arr => (Array.isArray(arr) ? arr : []).map(a => (a && typeof a === 'object' && a.activityId != null) ? {
       id: a.id || uid(), activityId: String(a.activityId), name: String(a.name ?? ''), type: String(a.type ?? ''),
       distanceKm: Number.isFinite(a.distanceKm) ? a.distanceKm : null, movingMin: Number.isFinite(a.movingMin) ? a.movingMin : null,
       elevM: Number.isFinite(a.elevM) ? a.elevM : null, avgSpeedMs: Number.isFinite(a.avgSpeedMs) ? a.avgSpeedMs : null,
       at: typeof a.at === 'string' ? a.at : null,
+      description: typeof a.description === 'string' ? a.description : '',
     } : null).filter(Boolean);
     if (raw.journal && typeof raw.journal === 'object' && !Array.isArray(raw.journal)) {
       for (const [date, day] of Object.entries(raw.journal)) {
@@ -456,7 +464,7 @@
   const journalActs = date => (state.journal[date] && state.journal[date].activities) || [];
   function journalDayRW(date) { return state.journal[date] || (state.journal[date] = { notes: [], activities: [] }); }
   function journalPrune(date) { const d = state.journal[date]; if (d && !d.notes.length && !d.activities.length) delete state.journal[date]; }
-  function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text }); }
+  function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text, at: nowHM() }); }
   function delJournalNote(date, id) { const d = state.journal[date]; if (!d) return; d.notes = d.notes.filter(n => n.id !== id); journalPrune(date); }
   function editJournalNote(date, id, text) { const n = journalNotes(date).find(n => n.id === id); if (n) n.text = text; }
   /* alle Journaltage mit Inhalt, neueste zuerst */
@@ -494,6 +502,7 @@
       elevM: Number.isFinite(a.total_elevation_gain) ? a.total_elevation_gain : null,
       avgSpeedMs: Number.isFinite(a.average_speed) ? a.average_speed : null,
       at: typeof a.start_date_local === 'string' ? a.start_date_local : null,
+      description: typeof a.description === 'string' ? a.description : '',
     };
   }
   function markTaskDone(t) {
@@ -581,13 +590,16 @@
   }
 
   const eventEnd = e => e.end || e.start;
-  const eventSpanLabel = e => (e.end && e.end !== e.start) ? `${fmtShort(e.start)}–${fmtShort(e.end)}` : fmtShort(e.start);
-  const eventsCovering = ds => state.events.filter(e => e.start <= ds && ds <= eventEnd(e));
+  const eventSpanLabel = e => e.undated ? '—' : (e.end && e.end !== e.start) ? `${fmtShort(e.start)}–${fmtShort(e.end)}` : fmtShort(e.start);
+  const eventsCovering = ds => state.events.filter(e => !e.undated && e.start <= ds && ds <= eventEnd(e));
+  const eventIsPast = e => !e.undated && eventEnd(e) < todayStr(); // abgelaufen → Archiv
   /* Neues Event: mehrtägig startet mit einer Standard-Spanne (Tag + 1), eintägig ohne Uhrzeiten. */
   const makeEvent = (name, start, multiDay) => ({
-    id: uid(), name, start, end: multiDay ? addDays(start, 1) : null, multiDay,
+    id: uid(), name, start, end: multiDay ? addDays(start, 1) : null, multiDay, undated: false,
     notes: '', startTime: null, endTime: null,
   });
+  /* Überlegung: undatiertes Event (nur Idee), taucht nicht im Kalender auf, später datierbar. */
+  const makeIdeaEvent = name => ({ id: uid(), name, start: null, end: null, multiDay: false, undated: true, notes: '', startTime: null, endTime: null });
   /* Gantt-Lane-Packung: überlappende Events bekommen verschiedene Zeilen, damit ein
      mehrtägiger Balken über die Tage in derselben Zeile durchläuft. */
   function assignLanes(events) {
@@ -941,11 +953,11 @@
     const days = dates.map(ds => {
       const d = parseDate(ds);
       const acts = journalActs(ds).map(activityLine).join('');
-      const notes = journalNotes(ds).map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${ds}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${ds}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+      const notes = journalNotes(ds).map(n => journalNoteRow(n, ds)).join('');
       return `<div class="journal-day">
         <div class="journal-date">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</div>
         <ul class="scratch-list">${acts}${notes}</ul>
-        ${addMini('add-scratch', 'Gedanke', ` data-date="${ds}"`)}
+        ${addMini('add-scratch', 'Neuer Journaleintrag', ` data-date="${ds}"`)}
       </div>`;
     }).join('');
     return `<div class="archive journal">${days}</div>`;
@@ -954,8 +966,10 @@
   function renderArchiveTab() {
     const doneCount = state.quests.filter(q => q.done).length;
     const journalCount = journalDates().length;
+    const pastEventCount = state.events.filter(eventIsPast).length;
     const tabs = `<div class="seg">
       <button data-action="archive-tab" data-tab="quests" class="${archiveTab === 'quests' ? 'active' : ''}">Quests<span class="seg-count">${doneCount}</span></button>
+      <button data-action="archive-tab" data-tab="events" class="${archiveTab === 'events' ? 'active' : ''}">Events<span class="seg-count">${pastEventCount}</span></button>
       <button data-action="archive-tab" data-tab="journal" class="${archiveTab === 'journal' ? 'active' : ''}">Journal<span class="seg-count">${journalCount}</span></button>
     </div>`;
     const backup = `<div class="backup-bar">
@@ -967,7 +981,21 @@
       ${backupStatus ? `<div class="backup-status">${esc(backupStatus)}</div>` : ''}
       <div class="backup-hint">Lädt alle Quests, Aufgaben, Events, Listen und das Journal als Datei herunter. Die Strava-Verbindung ist nicht enthalten (bei Bedarf einmal neu verbinden).</div>
     </div>`;
-    return `<div class="board-title">Archiv</div>${tabs}${archiveTab === 'journal' ? renderJournal() : renderArchive()}${backup}`;
+    const body = archiveTab === 'journal' ? renderJournal() : archiveTab === 'events' ? renderArchiveEvents() : renderArchive();
+    return `<div class="board-title">Archiv</div>${tabs}${body}${backup}`;
+  }
+
+  /* Vergangene Events (abgelaufen) im Archiv — Klick öffnet den Event-Kontext. */
+  function renderArchiveEvents() {
+    const past = state.events.filter(eventIsPast).sort((a, b) => a.start < b.start ? 1 : -1); // neueste zuerst
+    if (!past.length) return '<div class="archive"><div class="empty">— keine vergangenen Events —</div></div>';
+    const rows = past.map(e => `<div class="evrow" data-action="open-event-cal" data-id="${e.id}">
+      <span class="ev-dot" style="background:${EVENT_COLOR}"></span>
+      <span class="ev-date">${eventSpanLabel(e)}</span>
+      <span class="ev-name">${esc(e.name)}</span>
+      <button class="del" data-action="del-event" data-id="${e.id}" aria-label="Event löschen">${ICONS.x}</button>
+    </div>`).join('');
+    return `<div class="archive ev-archive">${rows}</div>`;
   }
 
   /* --- Events (zweispaltig: Liste + Kontext) --- */
@@ -982,7 +1010,24 @@
     </div>`;
   }
 
+  /* Kontext einer Überlegung (undatiert): Name, Datum festlegen (→ echtes Event), Notizen. */
+  function renderIdeaContext(e) {
+    return `<div class="col-notes">
+      <div class="col-head">Event · Überlegung</div>
+      <div class="ctx-title">${esc(e.name)}</div>
+      <div class="meta-row">
+        <label class="date-field">Datum festlegen<input type="date" data-field="ev-start" data-id="${e.id}" value=""></label>
+      </div>
+      <div class="ctx-hint">Sobald du ein Datum vergibst, wird daraus ein eintägiges Event.</div>
+      <div class="ctx-block">
+        <div class="ctx-label">Notizen</div>
+        <textarea class="notes" data-ev-notes data-id="${e.id}" placeholder="Notizen zur Überlegung …">${esc(e.notes)}</textarea>
+      </div>
+    </div>`;
+  }
+
   function renderEventContext(e) {
+    if (e.undated) return renderIdeaContext(e);
     // Verknüpfte Aufgaben (eventId) unabhängig vom Datum + unverknüpfte Aufgaben in der Event-Spanne.
     const tasks = state.agenda
       .filter(a => a.eventId === e.id || (!a.eventId && a.date >= e.start && a.date <= eventEnd(e)))
@@ -1021,21 +1066,26 @@
   }
 
   function renderEvents() {
-    const wantMulti = eventTab === 'multi';
+    // Aktive (nicht vergangene) Events je Reiter; Überlegungen sind undatiert.
+    const matchesTab = e => eventTab === 'idea' ? e.undated : (!e.undated && !eventIsPast(e) && !!e.multiDay === (eventTab === 'multi'));
     const events = state.events.slice()
-      .filter(e => !!e.multiDay === wantMulti)
-      .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
-    const active = activeEventId ? events.find(e => e.id === activeEventId) : null;
-    const singleCount = state.events.filter(e => !e.multiDay).length;
-    const multiCount = state.events.filter(e => e.multiDay).length;
+      .filter(matchesTab)
+      .sort((a, b) => eventTab === 'idea' ? 0 : (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+    const active = activeEventId ? state.events.find(e => e.id === activeEventId) : null;
+    const singleCount = state.events.filter(e => !e.undated && !e.multiDay && !eventIsPast(e)).length;
+    const multiCount = state.events.filter(e => !e.undated && e.multiDay && !eventIsPast(e)).length;
+    const ideaCount = state.events.filter(e => e.undated).length;
     const tabs = `<div class="step-tabs">
       <button data-action="event-tab" data-tab="single" class="${eventTab === 'single' ? 'active' : ''}">Eintägig<span class="seg-count">${singleCount}</span></button>
       <button data-action="event-tab" data-tab="multi" class="${eventTab === 'multi' ? 'active' : ''}">Mehrtägig<span class="seg-count">${multiCount}</span></button>
+      <button data-action="event-tab" data-tab="idea" class="${eventTab === 'idea' ? 'active' : ''}">Überlegungen<span class="seg-count">${ideaCount}</span></button>
     </div>`;
-    const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : `<div class="empty">— keine ${wantMulti ? 'mehrtägigen' : 'eintägigen'} Events —</div>`;
+    const emptyLabel = eventTab === 'idea' ? 'Überlegungen' : eventTab === 'multi' ? 'mehrtägigen Events' : 'eintägigen Events';
+    const list = events.length ? events.map(e => renderEventRow(e, active)).join('') : `<div class="empty">— keine ${emptyLabel} —</div>`;
+    const addPh = eventTab === 'idea' ? 'Neue Überlegung' : eventTab === 'multi' ? 'Neues mehrtägiges Event' : 'Neues eintägiges Event';
     return `<div class="ev-board${active ? ' detail has-active' : ''}">
       ${active ? '<div class="detail-bar"><button class="back" data-action="close-event">← Übersicht</button></div>' : ''}
-      <div class="ev-list">${tabs}${list}${addMini('add-event', wantMulti ? 'Neues mehrtägiges Event' : 'Neues eintägiges Event')}</div>
+      <div class="ev-list">${tabs}${list}${addMini('add-event', addPh)}</div>
       ${active ? renderEventContext(active) : ''}
     </div>`;
   }
@@ -1087,7 +1137,7 @@
     const gridEnd = addDays(gridStart, 41);
     const weekdays = WD_SHORT.map(w => `<div class="cal-weekday">${w}</div>`).join('');
 
-    const monthEvents = state.events.filter(e => eventEnd(e) >= gridStart && e.start <= gridEnd);
+    const monthEvents = state.events.filter(e => !e.undated && eventEnd(e) >= gridStart && e.start <= gridEnd);
     const { laneOf, laneCount } = assignLanes(monthEvents);
     const lanesShown = Math.min(3, laneCount);
 
@@ -1131,7 +1181,7 @@
     const body = (evCover.length || markers.length || steps.length || tasks.length) ? evGroup + group('Fristen', markers) + group('Schritte', steps) + group('Aufgaben', tasks) : '<div class="empty">— nichts an diesem Tag —</div>';
     return `<div class="day-view"><div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>${body}
       <form class="add-row add-agenda" data-action="add-agenda" data-date="${calCursor}"><input type="text" placeholder="Aufgabe für diesen Tag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
-      <div class="day-notes-block">${renderDayNotes(calCursor)}</div></div>`;
+      <div class="day-notes-block">${renderRoutines(calCursor)}${renderDayNotes(calCursor)}</div></div>`;
   }
 
   /* ---------- Dashboard-Rendering (heutiger Tag) ---------- */
@@ -1217,7 +1267,10 @@
     }
     if (a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
     const label = a.type ? `${esc(a.name || a.type)} · ${esc(a.type)}` : esc(a.name);
-    return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text"><strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}</span></li>`;
+    const time = hmFromISO(a.at);
+    const timeTag = time ? `<span class="scratch-time">${time}</span>` : '';
+    const desc = a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''; // Strava-Beschreibung (z. B. Sätze/Wdh.)
+    return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text">${timeTag}<strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}${desc}</span></li>`;
   }
 
   /* Zitat des Tages — deterministisch pro Kalendertag, rotiert durch alle Zitate. */
@@ -1228,23 +1281,29 @@
     return `<div class="dash-quote"><div class="quote-text">${esc(q.t)}</div>${q.s ? `<div class="quote-src">— ${esc(q.s)}</div>` : ''}</div>`;
   }
 
-  /* Routinen mit Streak (nur heute abhakbar). */
-  function renderRoutines() {
-    const today = todayStr();
+  /* Routinen mit Streak. Heute: volle Verwaltung. Vergangene Tage: nur nachträgliches
+     Abhaken (Streak-Backfill), ohne Umbenennen/Löschen/Neu. */
+  function renderRoutines(dateStr = todayStr()) {
+    const isToday = dateStr === todayStr();
     const rows = state.routines.map(r => {
-      const done = routineDoneOn(r, today);
+      const done = routineDoneOn(r, dateStr);
       const streak = routineCurrentStreak(r);
+      const title = isToday
+        ? `<span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>`
+        : `<span class="row-text">${esc(r.title)}</span>`;
+      const trailing = isToday
+        ? `<span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
+        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>`
+        : '';
       return `<li class="routine-row${done ? ' done' : ''}">
-        <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" aria-label="Abhaken">${ICONS.check}</button>
-        <span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>
-        <span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
-        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>
+        <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" data-date="${dateStr}" aria-label="Abhaken">${ICONS.check}</button>
+        ${title}${trailing}
       </li>`;
     }).join('');
     return `<div class="dash-routines">
-      <div class="dash-label">Routinen</div>
+      <div class="dash-label">Routinen${isToday ? '' : ' — nachtragen'}</div>
       <ul class="routine-list">${rows || '<div class="empty">— keine Routinen —</div>'}</ul>
-      ${addMini('add-routine', 'Neue Routine')}
+      ${isToday ? addMini('add-routine', 'Neue Routine') : ''}
     </div>`;
   }
 
@@ -1256,14 +1315,20 @@
     return `<div class="strava-box">${btn}${stravaStatus ? `<div class="strava-status">${esc(stravaStatus)}</div>` : ''}</div>`;
   }
 
-  /* Notizfeld pro Tag (Gedanken) + automatisch geloggte Strava-Aktivitäten. */
+  /* Journal-Notiz-Zeile mit Uhrzeit (falls vorhanden). */
+  function journalNoteRow(n, dateStr) {
+    const time = (typeof n.at === 'string' && n.at) ? `<span class="scratch-time">${esc(n.at)}</span>` : '';
+    return `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${time}${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
+  }
+
+  /* Journal-Feld pro Tag (Notizen + automatisch geloggte Strava-Aktivitäten). */
   function renderDayNotes(dateStr) {
-    const notes = journalNotes(dateStr).map(n => `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('');
+    const notes = journalNotes(dateStr).map(n => journalNoteRow(n, dateStr)).join('');
     const acts = journalActs(dateStr).map(activityLine).join('');
     return `<div class="dash-scratch">
-      <div class="dash-label">Gedanken</div>
+      <div class="dash-label">Journal</div>
       <ul class="scratch-list">${acts}${notes}</ul>
-      <form class="add-row add-scratch" data-action="add-scratch" data-date="${dateStr}"><input type="text" placeholder="Gedanke …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+      <form class="add-row add-scratch" data-action="add-scratch" data-date="${dateStr}"><input type="text" placeholder="Neuer Journaleintrag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
     </div>`;
   }
 
@@ -1419,7 +1484,7 @@
 
       case 'open-event': if (id !== activeEventId) activeEventId = id; else return; break;
       case 'close-event': activeEventId = null; break;
-      case 'event-tab': eventTab = el.dataset.tab === 'multi' ? 'multi' : 'single'; activeEventId = null; break;
+      case 'event-tab': eventTab = ['multi', 'idea'].includes(el.dataset.tab) ? el.dataset.tab : 'single'; activeEventId = null; break;
       case 'del-event': { const ev = state.events.find(x => x.id === id); if (!ev || !confirm(`Event „${ev.name}" löschen?`)) return; state.events = state.events.filter(x => x.id !== id); if (id === activeEventId) activeEventId = null; break; }
       case 'open-event-cal': { const ev = state.events.find(x => x.id === id); activeTab = 'quests'; questCat = 'events'; eventTab = ev && ev.multiDay ? 'multi' : 'single'; activeEventId = id; activeQuestId = null; activeStepId = null; break; }
       case 'open-event-month': { const ev = state.events.find(x => x.id === id); if (!ev) return; activeTab = 'calendar'; calView = 'monat'; calCursor = ev.start; break; }
@@ -1436,7 +1501,7 @@
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
       case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
-      case 'archive-tab': archiveTab = el.dataset.tab === 'journal' ? 'journal' : 'quests'; break;
+      case 'archive-tab': archiveTab = ['journal', 'events'].includes(el.dataset.tab) ? el.dataset.tab : 'quests'; break;
       case 'select-step': { if (id === activeStepId) return; activeStepId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
       case 'deselect-step': activeStepId = null; break;
       case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }
@@ -1494,7 +1559,7 @@
       case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
       case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
       case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
-      case 'toggle-routine': { const r = state.routines.find(r => r.id === id); if (r) toggleRoutine(r, todayStr()); break; }
+      case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
 
       default: return;
@@ -1525,7 +1590,7 @@
     if (f === 'start' || f === 'deadline') { const q = state.quests.find(q => q.id === input.dataset.id); if (!q) return; if (f === 'start') q.start = v; else q.deadline = v; }
     else if (f === 'step-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const s = q && findStep(q, input.dataset.id); if (s) s.deadline = v; }
     else if (f === 'ms-deadline') { const q = state.quests.find(q => q.id === input.dataset.quest); const m = q && q.milestones.find(m => m.id === input.dataset.id); if (m) m.deadline = v; }
-    else if (f === 'ev-start') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev && v) { ev.start = v; if (ev.end && ev.end < ev.start) ev.end = null; } }
+    else if (f === 'ev-start') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev && v) { const wasIdea = ev.undated; ev.start = v; ev.undated = false; if (ev.end && ev.end < ev.start) ev.end = null; if (wasIdea) eventTab = ev.multiDay ? 'multi' : 'single'; } }
     else if (f === 'ev-end') { const ev = state.events.find(x => x.id === input.dataset.id); if (ev) ev.end = (v && v >= ev.start) ? v : null; }
     else if (f === 'agenda-date') { const a = state.agenda.find(a => a.id === input.dataset.id); if (a && v) { removeFromAllTop(taskKey({ kind: 'agenda', id: a.id })); a.date = v; } }
     else if (f === 'sub-schedule') { const q = state.quests.find(q => q.id === input.dataset.quest); const s = q && findStep(q, input.dataset.step); const sub = s && findSubRec(s.subs, input.dataset.id); if (sub) { removeFromAllTop(taskKey({ kind: 'qsub', questId: input.dataset.quest, stepId: input.dataset.step, subId: input.dataset.id })); sub.scheduledDate = v; } }
@@ -1580,7 +1645,7 @@
         refocusSel = `form[data-action="dash-add-qsub"][data-quest="${q.id}"][data-step="${s.id}"] input`;
         break;
       }
-      case 'add-event': { const ev = makeEvent(text, todayStr(), eventTab === 'multi'); state.events.push(ev); activeEventId = ev.id; break; }
+      case 'add-event': { const ev = eventTab === 'idea' ? makeIdeaEvent(text) : makeEvent(text, todayStr(), eventTab === 'multi'); state.events.push(ev); activeEventId = ev.id; break; }
       case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
       case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
       default: return;

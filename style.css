@@ -930,6 +930,7 @@ input { font: inherit; color: inherit; }
 .ctx-block { margin-top: 20px; }
 .ctx-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .ctx-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.ctx-hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin: -6px 0 4px; }
 .ctx-title-link { display: block; text-align: left; transition: color 0.12s; }
 .ctx-title-link:hover { color: var(--blue); text-decoration: underline; }
 .ctx-up { font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); padding: 2px 6px; margin-left: 8px; }
@@ -1063,6 +1064,8 @@ input { font: inherit; color: inherit; }
 .scratch-item.activity .row-text { color: var(--muted); }
 .scratch-item.activity strong { color: var(--ink); font-weight: 600; }
 .add-scratch { margin-top: 10px; }
+.scratch-time { display: inline-block; font-family: var(--mono); font-size: 10px; color: var(--muted); margin-right: 7px; }
+.activity-desc { margin-top: 3px; font-size: 12px; line-height: 1.5; color: var(--muted); white-space: pre-wrap; }
 
 /* Zitat des Tages */
 .dash-quote { margin: 2px 0 24px; padding: 14px 0 16px; border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
