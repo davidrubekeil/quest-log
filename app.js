@@ -40,6 +40,9 @@
   ];
   const stravaKeywords = type => { const g = STRAVA_MATCH.find(m => m.types.includes(type)); return g ? g.keywords : []; };
   const isRunLike = type => ['Run', 'TrailRun', 'VirtualRun', 'Walk', 'Hike'].includes(type);
+  const isStrengthLike = type => ['WeightTraining', 'Workout', 'Crossfit', 'HighIntensityIntervalTraining'].includes(type);
+  /* Zählt "Set n: …"-Zeilen in einer Hevy/Strong-Beschreibung (Gesamtzahl über alle Übungen). */
+  const countSets = desc => { const m = typeof desc === 'string' ? desc.match(/^Set \d+:/gim) : null; return m ? m.length : 0; };
 
   const PRIOS = [
     { key: 'hoch',    label: 'Hoch',    color: 'var(--red)' },
@@ -1258,18 +1261,21 @@
   }
 
   function activityLine(a) {
+    const strength = isStrengthLike(a.type);
     const parts = [];
-    if (a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1).replace('.', ',')} km`);
+    if (!strength && a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1).replace('.', ',')} km`);
     if (a.movingMin != null) parts.push(`${Math.round(a.movingMin)} min`);
-    if (a.avgSpeedMs != null && a.avgSpeedMs > 0) {
+    if (!strength && a.avgSpeedMs != null && a.avgSpeedMs > 0) {
       if (isRunLike(a.type)) { const pace = 1000 / a.avgSpeedMs / 60; const m = Math.floor(pace), s = Math.round((pace - m) * 60); parts.push(`${m}:${String(s).padStart(2, '0')} /km`); }
       else parts.push(`${(a.avgSpeedMs * 3.6).toFixed(1).replace('.', ',')} km/h`);
     }
-    if (a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
+    if (!strength && a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
+    if (strength) { const sets = countSets(a.description); if (sets > 0) parts.push(`${sets} ${sets === 1 ? 'Satz' : 'Sätze'}`); }
     const label = a.type ? `${esc(a.name || a.type)} · ${esc(a.type)}` : esc(a.name);
     const time = hmFromISO(a.at);
     const timeTag = time ? `<span class="scratch-time">${time}</span>` : '';
-    const desc = a.description ? `<div class="activity-desc">${esc(a.description)}</div>` : ''; // Strava-Beschreibung (z. B. Sätze/Wdh.)
+    // Volle Hevy/Strong-Beschreibung nur bei Nicht-Kraft-Typen anzeigen; bei Kraft reicht die Sätze-Zahl oben.
+    const desc = (!strength && a.description) ? `<div class="activity-desc">${esc(a.description)}</div>` : '';
     return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text">${timeTag}<strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}${desc}</span></li>`;
   }
 
