@@ -1,21 +1,22 @@
 /* Quest-Log — für den Mac ausgerichtet.
    Ruhiges, entlinktes Layout: Struktur über Weißraum + Hairlines + Farbakzente,
-   nicht über harte Kästen. Feldprotokoll-Anmutung bleibt (Grotesk, Stempel,
-   eckige Checkboxen). */
+   nicht über harte Kästen. Feldprotokoll-Anmutung: Monospace-Fließtext,
+   fette Grotesk für Überschriften/Labels, Stempel, eckige Checkboxen. */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --paper: #FCF9F8;                    /* fast weiß, sehr dezenter Rotstich */
+  --paper: #FBF7F6;                    /* fast weiß, moderater Rotstich */
   --ink:   #1A1412;
-  --rule:  #E9E1DF;                    /* Hairline, dezenter Rotstich */
-  --hair:  rgba(70, 30, 26, 0.045);
-  --muted: #938C89;
+  --rule:  #E8DEDC;                    /* Hairline, moderater Rotstich */
+  --hair:  rgba(80, 30, 26, 0.05);
+  --muted: #948B87;
   --red:   #A6352A;
   --blue:  #3D5A73;
   --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
 
-  --mono: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --grotesk: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -62,6 +63,7 @@ input { font: inherit; color: inherit; }
 .tab {
   position: relative;
   padding: 4px 2px 12px;
+  font-family: var(--grotesk);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -101,6 +103,7 @@ input { font: inherit; color: inherit; }
 
 .board-title {
   text-align: center;
+  font-family: var(--grotesk);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.3em;
@@ -119,7 +122,9 @@ input { font: inherit; color: inherit; }
 .seg button {
   position: relative;
   padding: 4px 2px 10px;
+  font-family: var(--grotesk);
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -145,6 +150,7 @@ input { font: inherit; color: inherit; }
 .board-section { margin-bottom: 34px; }
 
 .section-title {
+  font-family: var(--grotesk);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.16em;
@@ -720,6 +726,7 @@ input { font: inherit; color: inherit; }
 
 .cal-period {
   flex: 1;
+  font-family: var(--grotesk);
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -810,7 +817,7 @@ input { font: inherit; color: inherit; }
 /* Tagesansicht */
 .day-view { max-width: 620px; }
 .day-head { margin-bottom: 6px; }
-.day-title { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+.day-title { font-family: var(--grotesk); font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
 
 .day-group { margin-top: 20px; }
 .day-group-label {
@@ -866,7 +873,7 @@ input { font: inherit; color: inherit; }
 /* ---------- Schritte-Reiter (Aktuell / Erledigt) ---------- */
 
 .step-tabs { display: flex; gap: 18px; margin-bottom: 14px; }
-.step-tabs button { position: relative; padding: 2px 2px 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.step-tabs button { position: relative; padding: 2px 2px 8px; font-family: var(--grotesk); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .step-tabs button:hover { color: var(--ink); }
 .step-tabs button.active { color: var(--ink); }
 .step-tabs button.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ink); }
@@ -931,7 +938,7 @@ input { font: inherit; color: inherit; }
 
 .ctx-block { margin-top: 20px; }
 .ctx-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.ctx-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.ctx-title { font-family: var(--grotesk); font-size: 15px; font-weight: 700; margin-bottom: 12px; }
 .ctx-hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin: -6px 0 4px; }
 .ctx-title-link { display: block; text-align: left; transition: color 0.12s; }
 .ctx-title-link:hover { color: var(--blue); text-decoration: underline; }
@@ -952,8 +959,8 @@ input { font: inherit; color: inherit; }
 
 /* ---------- Archiv (Erledigt-Reiter) ---------- */
 
-.arch-cat { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin: 26px 0 6px; }
-.arch-sec { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
+.arch-cat { font-family: var(--grotesk); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; margin: 26px 0 6px; }
+.arch-sec { font-family: var(--grotesk); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
 .arch-quest { opacity: 0.62; padding: 8px 0 10px 14px; border-left: 2px solid var(--rule); margin-bottom: 10px; }
 .arch-head { display: flex; align-items: baseline; gap: 10px; }
 .arch-title { font-size: 14px; font-weight: 600; text-decoration: line-through; text-decoration-color: var(--rule); }
@@ -1141,7 +1148,9 @@ input { font: inherit; color: inherit; }
 .dash-termine .items { list-style: none; }
 
 .dash-label {
+  font-family: var(--grotesk);
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
