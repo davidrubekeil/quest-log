@@ -1,21 +1,21 @@
 /* Quest-Log — für den Mac ausgerichtet.
    Ruhiges, entlinktes Layout: Struktur über Weißraum + Hairlines + Farbakzente,
-   nicht über harte Kästen. Feldprotokoll-Anmutung bleibt (Monospace, Stempel,
+   nicht über harte Kästen. Feldprotokoll-Anmutung bleibt (Grotesk, Stempel,
    eckige Checkboxen). */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --paper: #FBF6F5;                    /* fast weiß, leichter Rotstich */
+  --paper: #FCF9F8;                    /* fast weiß, sehr dezenter Rotstich */
   --ink:   #1A1412;
-  --rule:  #E6D9D7;                    /* Hairline mit Rotstich */
-  --hair:  rgba(90, 30, 26, 0.06);
-  --muted: #948581;
+  --rule:  #E9E1DF;                    /* Hairline, dezenter Rotstich */
+  --hair:  rgba(70, 30, 26, 0.045);
+  --muted: #938C89;
   --red:   #A6352A;
   --blue:  #3D5A73;
   --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
 
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --mono: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 html { -webkit-text-size-adjust: 100%; }
