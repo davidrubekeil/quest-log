@@ -231,9 +231,12 @@
   }
 
   function normalizeItem(raw) {
-    if (typeof raw === 'string') return { id: uid(), text: raw, done: false };
+    if (typeof raw === 'string') return { id: uid(), text: raw, done: false, subs: [], open: false };
     if (!raw || typeof raw !== 'object') return null;
-    return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done };
+    return {
+      id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done, open: !!raw.open,
+      subs: (Array.isArray(raw.subs) ? raw.subs : []).map(normalizeItem).filter(Boolean),
+    };
   }
 
   const kidsOf = n => Array.isArray(n.subs) ? n.subs : (Array.isArray(n.steps) ? n.steps : (Array.isArray(n.items) ? n.items : []));
@@ -1100,7 +1103,7 @@
       main: state.quests.filter(q => q.category === 'main' && !q.done).length,
       side: state.quests.filter(q => q.category === 'side' && !q.done).length,
       skill: state.quests.filter(q => q.category === 'skill' && !q.done).length,
-      events: state.events.length,
+      events: state.events.filter(e => !eventIsPast(e)).length, // vergangene Events zählen nicht mit (liegen im Archiv)
     };
     if (questCat === 'erledigt') questCat = 'main'; // Erledigt ist ins Archiv gewandert
     const tabs = QUEST_TABS.map(c => `<button data-action="quest-cat" data-cat="${c.key}" class="${questCat === c.key ? 'active' : ''}">${c.label}<span class="seg-count">${counts[c.key]}</span></button>`).join('');
@@ -1406,12 +1409,36 @@
 
   /* --- Listen --- */
 
+  /* Listen-Eintrag rekursiv wie ein Quest-Unterschritt: Blätter mit Checkbox, Zweige mit
+     Fortschrittsmarke, jeder Eintrag kann per Chevron aufgeklappt werden, um selbst
+     Unterpunkte zu bekommen (auch mehrere Ebenen tief). */
+  function renderListItem(item, listId) {
+    const hasKids = item.subs.length > 0;
+    const done = subDone(item);
+    const { done: sd, total: st } = subLeaves(item);
+    const control = hasKids
+      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      : `<button class="checkbox" data-action="toggle-item" data-list="${listId}" data-id="${item.id}" aria-label="Abhaken">${ICONS.check}</button>`;
+    return `<li class="node sub${item.open ? ' open' : ''}${done ? ' done' : ''}">
+      <div class="node-row">
+        <button class="chev" data-action="toggle-item-open" data-list="${listId}" data-id="${item.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
+        <span class="node-control">${control}</span>
+        <span class="row-text editable" data-edit="item-text" data-list="${listId}" data-id="${item.id}">${esc(item.text)}</span>
+        <button class="del" data-action="del-item" data-list="${listId}" data-id="${item.id}" aria-label="Löschen">${ICONS.x}</button>
+      </div>
+      ${item.open ? `<ul class="subtree">
+        ${item.subs.map(k => renderListItem(k, listId)).join('')}
+        <li class="add-sub">${addMini('add-sub-item', 'Unterpunkt', ` data-list="${listId}" data-parent="${item.id}"`)}</li>
+      </ul>` : ''}
+    </li>`;
+  }
+
   function renderLists() {
     const blocks = state.lists.map(l => {
-      const doneCount = l.items.filter(i => i.done).length;
+      const totals = l.items.reduce((a, i) => { const r = subLeaves(i); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 });
       return `<section class="block${l.open ? ' open' : ''}">
-        <header class="block-head list-head" data-action="toggle-list" data-id="${l.id}"><span class="chev">${ICONS.chevron}</span><h2 class="editable" data-edit="list-name" data-id="${l.id}">${esc(l.name)}</h2><span class="count">${doneCount}/${l.items.length}</span><button class="del" data-action="del-list" data-id="${l.id}" aria-label="Liste löschen">${ICONS.x}</button></header>
-        ${l.open ? `${l.items.length ? `<ul class="items">${l.items.map(i => `<li class="row${i.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-item" data-list="${l.id}" data-id="${i.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text editable" data-edit="item-text" data-list="${l.id}" data-id="${i.id}">${esc(i.text)}</span><button class="del" data-action="del-item" data-list="${l.id}" data-id="${i.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>` : '<div class="empty">— leer —</div>'}
+        <header class="block-head list-head" data-action="toggle-list" data-id="${l.id}"><span class="chev">${ICONS.chevron}</span><h2 class="editable" data-edit="list-name" data-id="${l.id}">${esc(l.name)}</h2><span class="count">${totals.done}/${totals.total}</span><button class="del" data-action="del-list" data-id="${l.id}" aria-label="Liste löschen">${ICONS.x}</button></header>
+        ${l.open ? `${l.items.length ? `<ul class="subtree">${l.items.map(i => renderListItem(i, l.id)).join('')}</ul>` : '<div class="empty">— leer —</div>'}
           <form class="add-row" data-action="add-item" data-list="${l.id}"><input type="text" placeholder="Neuer Eintrag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
       </section>`;
     }).join('');
@@ -1447,7 +1474,7 @@
       case 'scratch-text': { if (isDateStr(ds.date)) editJournalNote(ds.date, ds.id, val); break; }
       case 'routine-title': { const r = state.routines.find(r => r.id === ds.id); if (r) r.title = val; break; }
       case 'list-name': { const l = state.lists.find(l => l.id === ds.id); if (l) l.name = val; break; }
-      case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && l.items.find(i => i.id === ds.id); if (i) i.text = val; break; }
+      case 'item-text': { const l = state.lists.find(l => l.id === ds.list); const i = l && findSubRec(l.items, ds.id); if (i) i.text = val; break; }
     }
   }
   function commitEdit(cancel) {
@@ -1566,8 +1593,9 @@
 
       case 'toggle-list': { const l = state.lists.find(l => l.id === id); if (l) l.open = !l.open; break; }
       case 'del-list': { const l = state.lists.find(l => l.id === id); if (!l || !confirm(`Liste „${l.name}" löschen?`)) return; state.lists = state.lists.filter(x => x.id !== id); break; }
-      case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && l.items.find(i => i.id === id); if (i) i.done = !i.done; break; }
-      case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) l.items = l.items.filter(i => i.id !== id); break; }
+      case 'toggle-item': { const l = state.lists.find(l => l.id === listId); const i = l && findSubRec(l.items, id); if (!i || i.subs.length) return; i.done = !i.done; break; }
+      case 'del-item': { const l = state.lists.find(l => l.id === listId); if (l) removeSubRec(l.items, id); break; }
+      case 'toggle-item-open': { const l = state.lists.find(l => l.id === listId); const i = l && findSubRec(l.items, id); if (i) i.open = !i.open; break; }
       case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
       case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
@@ -1657,7 +1685,17 @@
       }
       case 'add-event': { const ev = eventTab === 'idea' ? makeIdeaEvent(text) : makeEvent(text, todayStr(), eventTab === 'multi'); state.events.push(ev); activeEventId = ev.id; break; }
       case 'add-list': state.lists.push({ id: uid(), name: text, open: true, items: [] }); refocusSel = 'form[data-action="add-list"] input'; break;
-      case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
+      case 'add-item': { const l = state.lists.find(l => l.id === form.dataset.list); if (!l) return; l.items.push({ id: uid(), text, done: false, subs: [], open: false }); refocusSel = `form[data-action="add-item"][data-list="${l.id}"] input`; break; }
+      case 'add-sub-item': {
+        const l = state.lists.find(l => l.id === form.dataset.list);
+        const parent = l && findSubRec(l.items, form.dataset.parent);
+        if (!parent) return;
+        parent.subs.push({ id: uid(), text, done: false, subs: [], open: false });
+        parent.done = false;
+        parent.open = true;
+        refocusSel = `form[data-action="add-sub-item"][data-parent="${parent.id}"] input`;
+        break;
+      }
       default: return;
     }
     save(); render();

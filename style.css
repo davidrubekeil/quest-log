@@ -500,11 +500,11 @@ input { font: inherit; color: inherit; }
 
 .done > .checkbox,
 .done > .row > .checkbox,
-.node.done > .node-row > .checkbox,
+.node.done > .node-row .checkbox,
 .block-head.done .checkbox { background: var(--ink); }
 .done > .checkbox .ico,
 .done > .row > .checkbox .ico,
-.node.done > .node-row > .checkbox .ico,
+.node.done > .node-row .checkbox .ico,
 .block-head.done .checkbox .ico { opacity: 1; }
 
 .row-text {
