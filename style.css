@@ -6,11 +6,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --paper: #F0EEE6;
-  --ink:   #1C1B18;
-  --rule:  #DEDACB;                    /* warme Hairline */
-  --hair:  rgba(28, 27, 24, 0.06);     /* noch dezenter */
-  --muted: #8B8577;
+  --paper: #FBF6F5;                    /* fast weiß, leichter Rotstich */
+  --ink:   #1A1412;
+  --rule:  #E6D9D7;                    /* Hairline mit Rotstich */
+  --hair:  rgba(90, 30, 26, 0.06);
+  --muted: #948581;
   --red:   #A6352A;
   --blue:  #3D5A73;
   --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
@@ -62,8 +62,9 @@ input { font: inherit; color: inherit; }
 .tab {
   position: relative;
   padding: 4px 2px 12px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
   transition: color 0.12s;
@@ -100,10 +101,11 @@ input { font: inherit; color: inherit; }
 
 .board-title {
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ink);
   padding: 26px 0 18px;
 }
 
