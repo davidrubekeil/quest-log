@@ -1251,12 +1251,18 @@
     </li>`;
   }
 
+  /* Ein Top-Task-Datum passt zum betrachteten Tag entweder exakt, oder — nur am heutigen
+     Tag — wenn es überfällig ist (in der Vergangenheit liegt). So bleiben überfällige
+     Aufgaben, die man als Top-Aufgabe markiert, dort erhalten statt sofort zu verschwinden. */
+  const topDateMatches = (taskDate, dateStr) => taskDate === dateStr || (dateStr === todayStr() && taskDate < dateStr);
+  const overdueDaysFor = (taskDate, dateStr) => taskDate < dateStr ? dayDiff(taskDate, dateStr) : 0;
+
   /* Löst eine Top-Referenz für einen bestimmten Tag auf; verwirft sie, wenn die Aufgabe
      nicht mehr existiert oder inzwischen an einem anderen Tag liegt (z. B. verschoben). */
   function resolveTopTask(ref, dateStr) {
-    if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || s.deadline !== dateStr) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s) }; }
-    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || sub.scheduledDate !== dateStr) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub), subs: sub.subs }; }
-    if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || a.date !== dateStr) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs }; }
+    if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || !topDateMatches(s.deadline, dateStr)) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s), overdueDays: overdueDaysFor(s.deadline, dateStr) }; }
+    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || !topDateMatches(sub.scheduledDate, dateStr)) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub), subs: sub.subs, overdueDays: overdueDaysFor(sub.scheduledDate, dateStr) }; }
+    if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || !topDateMatches(a.date, dateStr)) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs, overdueDays: overdueDaysFor(a.date, dateStr) }; }
     return null;
   }
 
