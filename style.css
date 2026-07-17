@@ -1157,6 +1157,17 @@ input { font: inherit; color: inherit; }
   margin-bottom: 8px;
 }
 .dash-label.warn { color: var(--red); }
+
+.routines-head {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  user-select: none;
+}
+.routines-head .chev { flex: none; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.routines-head .chev .ico { width: 9px; height: 9px; transform: rotate(-90deg); transition: transform 0.12s; }
+.routines-head .chev.open .ico { transform: none; }
 .dash-hint { text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--muted); }
 
 .dash-top, .dash-overdue, .dash-tasks { margin-top: 20px; }

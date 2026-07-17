@@ -634,6 +634,7 @@
   let dashTab = 'offen';
   let eventTab = 'single';
   let archiveTab = 'quests';
+  let routinesOpen = true;
   let stravaSyncing = false;
   let stravaStatus = '';
   let calView = 'tag';
@@ -1296,19 +1297,24 @@
     return `<div class="dash-quote"><div class="quote-text">${esc(q.t)}</div>${q.s ? `<div class="quote-src">— ${esc(q.s)}</div>` : ''}</div>`;
   }
 
-  /* Routinen mit Streak. Heute: volle Verwaltung. Vergangene Tage: nur nachträgliches
-     Abhaken (Streak-Backfill), ohne Umbenennen/Löschen/Neu. */
+  /* Routinen mit Streak. Heute: volle Verwaltung inkl. Umsortieren. Vergangene Tage: nur
+     nachträgliches Abhaken (Streak-Backfill), ohne Umbenennen/Löschen/Neu/Umsortieren. */
   function renderRoutines(dateStr = todayStr()) {
     const isToday = dateStr === todayStr();
-    const rows = state.routines.map(r => {
+    const n = state.routines.length;
+    const rows = state.routines.map((r, i) => {
       const done = routineDoneOn(r, dateStr);
       const streak = routineCurrentStreak(r);
       const title = isToday
         ? `<span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>`
         : `<span class="row-text">${esc(r.title)}</span>`;
+      const arrows = (isToday && n > 1) ? `<span class="arrows">
+          <button class="arrow-up" data-action="routine-up" data-index="${i}"${i === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
+          <button class="arrow-down" data-action="routine-down" data-index="${i}"${i === n - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
+        </span>` : '';
       const trailing = isToday
         ? `<span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
-        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>`
+        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>${arrows}`
         : '';
       return `<li class="routine-row${done ? ' done' : ''}">
         <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" data-date="${dateStr}" aria-label="Abhaken">${ICONS.check}</button>
@@ -1316,9 +1322,8 @@
       </li>`;
     }).join('');
     return `<div class="dash-routines">
-      <div class="dash-label">Routinen${isToday ? '' : ' — nachtragen'}</div>
-      <ul class="routine-list">${rows || '<div class="empty">— keine Routinen —</div>'}</ul>
-      ${isToday ? addMini('add-routine', 'Neue Routine') : ''}
+      <div class="dash-label routines-head" data-action="toggle-routines-open"><span class="chev${routinesOpen ? ' open' : ''}">${ICONS.chevron}</span>Routinen${isToday ? '' : ' — nachtragen'}</div>
+      ${routinesOpen ? `<ul class="routine-list">${rows || '<div class="empty">— keine Routinen —</div>'}</ul>${isToday ? addMini('add-routine', 'Neue Routine') : ''}` : ''}
     </div>`;
   }
 
@@ -1599,6 +1604,9 @@
       case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
       case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
+      case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
+      case 'routine-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.routines[i - 1], state.routines[i]] = [state.routines[i], state.routines[i - 1]]; break; }
+      case 'routine-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.routines.length - 1) return; [state.routines[i + 1], state.routines[i]] = [state.routines[i], state.routines[i + 1]]; break; }
 
       default: return;
     }
