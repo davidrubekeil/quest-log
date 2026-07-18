@@ -940,6 +940,8 @@ input { font: inherit; color: inherit; }
 .ctx-label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .ctx-title { font-family: var(--grotesk); font-size: 15px; font-weight: 700; margin-bottom: 12px; }
 .ctx-hint { font-size: 11px; color: var(--muted); line-height: 1.5; margin: -6px 0 4px; }
+.ev-daytoggle { display: block; font-size: 11px; color: var(--muted); margin: -6px 0 16px; transition: color 0.12s; }
+.ev-daytoggle:hover { color: var(--blue); text-decoration: underline; }
 .ctx-title-link { display: block; text-align: left; transition: color 0.12s; }
 .ctx-title-link:hover { color: var(--blue); text-decoration: underline; }
 .ctx-up { font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); padding: 2px 6px; margin-left: 8px; }
@@ -1005,6 +1007,9 @@ input { font: inherit; color: inherit; }
 .cal-bar.empty { background: transparent; pointer-events: none; }
 .cal-bar.bar-start { margin-left: 0; }
 .cal-bar.bar-end { margin-right: 0; }
+
+/* Termine anderer Personen: dünne Hairline statt Balken, bewusst zurückhaltend. */
+.cal-hair { height: 2px; margin: 0 0 1px; border-radius: 1px; cursor: pointer; }
 
 @media (max-width: 940px) {
   .ev-board.detail { grid-template-columns: 1fr; gap: 24px; }
