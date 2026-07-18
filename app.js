@@ -1182,7 +1182,12 @@
       const d = parseDate(ds);
       const cover = eventsCovering(ds);
       const otherCover = cover.filter(e => e.other);
-      const hair = otherCover.length ? `<div class="cal-hair" style="background:${OTHER_EVENT_COLOR}" data-action="open-event-cal" data-id="${otherCover[0].id}" title="${esc(otherCover.map(e => e.name).join(', '))}"></div>` : '';
+      let hair = '';
+      if (otherCover.length) {
+        const oe = otherCover[0];
+        const showOtherName = ds === oe.start || wdIndexMon(d) === 0;
+        hair = `<div class="cal-hair" style="background:${OTHER_EVENT_COLOR}" data-action="open-event-cal" data-id="${oe.id}" title="${esc(otherCover.map(e => e.name).join(', '))}">${showOtherName ? esc(oe.name) : ''}</div>`;
+      }
       let bars = '';
       for (let lane = 0; lane < lanesShown; lane++) {
         const e = cover.find(x => !x.other && laneOf[x.id] === lane);
@@ -1194,7 +1199,7 @@
       const items = byDate[ds] || [];
       const chips = items.slice(0, 2).map(e => `<div class="cal-chip${e.done ? ' done' : ''}"><span class="cdot" style="background:${DOT[e.kind]}"></span>${esc(e.text)}</div>`).join('');
       const more = items.length > 2 ? `<div class="cal-more">+${items.length - 2} mehr</div>` : '';
-      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span><button class="cal-add" data-action="cal-add-event" data-date="${ds}" aria-label="Event hinzufügen" title="Event hinzufügen">${ICONS.plus}</button>${hair}${bars}${chips}${more}</div>`;
+      cells += `<div class="cal-cell${d.getMonth() === c.getMonth() ? '' : ' other'}${ds === todayStr() ? ' today' : ''}" data-action="cal-day" data-date="${ds}"><span class="cal-daynum">${d.getDate()}</span><button class="cal-add" data-action="cal-add-event" data-date="${ds}" aria-label="Event hinzufügen" title="Event hinzufügen">${ICONS.plus}</button>${bars}${chips}${more}${hair}</div>`;
     }
     return `<div class="cal-grid">${weekdays}${cells}</div>`;
   }

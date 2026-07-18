@@ -1011,8 +1011,21 @@ input { font: inherit; color: inherit; }
 .cal-bar.bar-start { margin-left: 0; }
 .cal-bar.bar-end { margin-right: 0; }
 
-/* Termine anderer Personen: dünne Hairline statt Balken, bewusst zurückhaltend. */
-.cal-hair { height: 2px; margin: 0 0 1px; border-radius: 1px; cursor: pointer; }
+/* Termine anderer Personen: dünner, zurückhaltender Streifen statt vollem Balken,
+   läuft am unteren Zellenrand entlang (margin-top: auto schiebt ihn dorthin,
+   unabhängig davon wie viel sonst noch in der Zelle steht). */
+.cal-hair {
+  margin-top: auto;
+  margin-bottom: -1px;
+  height: 11px;
+  padding: 0 6px;
+  font-size: 8px;
+  line-height: 11px;
+  color: var(--ink);
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
 
 @media (max-width: 940px) {
   .ev-board.detail { grid-template-columns: 1fr; gap: 24px; }
