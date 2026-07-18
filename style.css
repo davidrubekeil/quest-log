@@ -978,9 +978,12 @@ input { font: inherit; color: inherit; }
 /* ---------- Events ---------- */
 
 .ev-board { max-width: 760px; margin: 0 auto; }
-.ev-board.detail { max-width: none; margin: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 0; align-items: start; }
+.ev-board.detail { max-width: none; margin: 0; display: grid; grid-template-columns: 400px minmax(0, 1fr); gap: 0; align-items: start; }
 .ev-board.detail .ev-list { padding-right: 28px; border-right: 1px solid var(--rule); }
 .ev-board.detail .col-notes { padding-left: 28px; }
+/* Vier Event-Reiter passen nicht immer in eine Zeile der schmaleren Listen-Spalte —
+   lieber zweizeilig umbrechen als mit dem Kontext-Titel daneben zu überlappen. */
+.ev-list .step-tabs { flex-wrap: wrap; row-gap: 8px; column-gap: 14px; }
 
 .evrow { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--hair); cursor: pointer; transition: background 0.12s, opacity 0.12s; }
 .evrow:hover { background: var(--hair); }
