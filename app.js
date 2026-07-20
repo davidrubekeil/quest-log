@@ -646,6 +646,7 @@
   let eventTab = 'single';
   let archiveTab = 'quests';
   let routinesOpen = true;
+  let journalOpenWeeks = null; // lazy: beim ersten Rendern mit der neuesten Woche befüllt
   let stravaSyncing = false;
   let stravaStatus = '';
   let calView = 'tag';
@@ -965,20 +966,48 @@
 
   /* --- Journal (Gedanken/Notizen + Aktivitäten pro Tag, neueste zuerst) --- */
 
+  function renderJournalDay(ds) {
+    const d = parseDate(ds);
+    const acts = journalActs(ds).map(activityLine).join('');
+    const notes = journalNotes(ds).map(n => journalNoteRow(n, ds)).join('');
+    return `<div class="journal-day">
+      <div class="journal-date">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</div>
+      <ul class="scratch-list">${acts}${notes}</ul>
+      ${addMini('add-scratch', 'Neuer Journaleintrag', ` data-date="${ds}"`)}
+    </div>`;
+  }
+
+  /* Journal nach Kalenderwochen gruppiert (Montag–Sonntag), ein-/ausklappbar, damit lange
+     Journal-Historien nicht auf einmal die Seite fluten. Neueste Woche zuerst, standardmäßig
+     nur diese aufgeklappt. */
   function renderJournal() {
-    const dates = journalDates();
+    const dates = journalDates(); // neueste zuerst
     if (!dates.length) return '<div class="archive"><div class="empty">— noch keine Einträge —</div></div>';
-    const days = dates.map(ds => {
-      const d = parseDate(ds);
-      const acts = journalActs(ds).map(activityLine).join('');
-      const notes = journalNotes(ds).map(n => journalNoteRow(n, ds)).join('');
-      return `<div class="journal-day">
-        <div class="journal-date">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</div>
-        <ul class="scratch-list">${acts}${notes}</ul>
-        ${addMini('add-scratch', 'Neuer Journaleintrag', ` data-date="${ds}"`)}
-      </div>`;
+    const weeks = [];
+    const byKey = {};
+    for (const ds of dates) {
+      const key = addDays(ds, -wdIndexMon(parseDate(ds)));
+      if (!byKey[key]) { byKey[key] = { key, dates: [] }; weeks.push(byKey[key]); }
+      byKey[key].dates.push(ds);
+    }
+    if (journalOpenWeeks === null) journalOpenWeeks = new Set([weeks[0].key]);
+
+    const weekBlocks = weeks.map(w => {
+      const open = journalOpenWeeks.has(w.key);
+      const monday = parseDate(w.key);
+      const sunday = parseDate(addDays(w.key, 6));
+      const label = `${monday.getDate()}. ${MONTHS[monday.getMonth()]} – ${sunday.getDate()}. ${MONTHS[sunday.getMonth()]} ${sunday.getFullYear()}`;
+      const entryCount = w.dates.reduce((n, ds) => n + journalNotes(ds).length + journalActs(ds).length, 0);
+      return `<section class="journal-week${open ? ' open' : ''}">
+        <header class="journal-week-head" data-action="toggle-journal-week" data-key="${w.key}">
+          <span class="chev">${ICONS.chevron}</span>
+          <span class="journal-week-label">${label}</span>
+          <span class="count">${entryCount}</span>
+        </header>
+        ${open ? `<div class="journal-week-body">${w.dates.map(renderJournalDay).join('')}</div>` : ''}
+      </section>`;
     }).join('');
-    return `<div class="archive journal">${days}</div>`;
+    return `<div class="archive journal">${weekBlocks}</div>`;
   }
 
   function renderArchiveTab() {
@@ -1186,7 +1215,9 @@
       if (otherCover.length) {
         const oe = otherCover[0];
         const showOtherName = ds === oe.start || wdIndexMon(d) === 0;
-        hair = `<div class="cal-hair" style="background:${OTHER_EVENT_COLOR}" data-action="open-event-cal" data-id="${oe.id}" title="${esc(otherCover.map(e => e.name).join(', '))}">${showOtherName ? esc(oe.name) : ''}</div>`;
+        const hairTitle = esc(otherCover.map(e => e.name).join(', '));
+        const label = showOtherName ? `<div class="cal-hair-label" data-action="open-event-cal" data-id="${oe.id}" title="${hairTitle}">${esc(oe.name)}</div>` : '';
+        hair = `${label}<div class="cal-hair" style="background:${OTHER_EVENT_COLOR}" data-action="open-event-cal" data-id="${oe.id}" title="${hairTitle}"></div>`;
       }
       let bars = '';
       for (let lane = 0; lane < lanesShown; lane++) {
@@ -1651,6 +1682,7 @@
       case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
       case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
+      case 'toggle-journal-week': { const k = el.dataset.key; if (!journalOpenWeeks) return; if (journalOpenWeeks.has(k)) journalOpenWeeks.delete(k); else journalOpenWeeks.add(k); break; }
       case 'routine-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.routines[i - 1], state.routines[i]] = [state.routines[i], state.routines[i - 1]]; break; }
       case 'routine-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.routines.length - 1) return; [state.routines[i + 1], state.routines[i]] = [state.routines[i], state.routines[i + 1]]; break; }
 

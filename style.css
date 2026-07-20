@@ -1011,18 +1011,24 @@ input { font: inherit; color: inherit; }
 .cal-bar.bar-start { margin-left: 0; }
 .cal-bar.bar-end { margin-right: 0; }
 
-/* Termine anderer Personen: dünner, zurückhaltender Streifen statt vollem Balken,
-   läuft am unteren Zellenrand entlang (margin-top: auto schiebt ihn dorthin,
-   unabhängig davon wie viel sonst noch in der Zelle steht). */
+/* Termine anderer Personen: hauchdünne Linie statt Balken, läuft ungebrochen über die
+   Zellgrenzen (negative Offsets kompensieren das Cell-Padding, wie bei .cal-bar). Der Titel
+   sitzt als eigenes Label knapp darüber, absolut positioniert, damit die Linie selbst in jeder
+   Zelle exakt auf gleicher Höhe bleibt — unabhängig davon, ob dort ein Titel steht oder nicht. */
 .cal-hair {
-  margin-top: auto;
-  margin-bottom: -1px;
-  height: 11px;
-  padding: 0 6px;
+  position: absolute;
+  left: -7px; right: -7px; bottom: -6px;
+  height: 3px;
+  cursor: pointer;
+}
+.cal-hair-label {
+  position: absolute;
+  left: 7px; right: 7px; bottom: 1px;
   font-size: 8px;
-  line-height: 11px;
-  color: var(--ink);
+  line-height: 1.3;
+  color: var(--muted);
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -1154,8 +1160,20 @@ input { font: inherit; color: inherit; }
 .backup-status { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
 .backup-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
 
-/* Journal im Archiv: ein Block pro Tag */
+/* Journal im Archiv: nach Kalenderwochen gruppiert, ein-/ausklappbar */
 .archive.journal { max-width: 640px; }
+.journal-week { margin-bottom: 6px; }
+.journal-week-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+  border-bottom: 1px solid var(--rule);
+}
+.journal-week-label { flex: 1; font-family: var(--grotesk); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.journal-week.open > .journal-week-head .chev .ico { transform: none; }
+.journal-week-body { padding-top: 20px; }
 .journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
 .journal-day:last-child { border-bottom: none; }
 .journal-date { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 8px; }
