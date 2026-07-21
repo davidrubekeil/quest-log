@@ -1224,7 +1224,7 @@
         const e = cover.find(x => !x.other && laneOf[x.id] === lane);
         if (e) {
           const showName = ds === e.start || wdIndexMon(d) === 0;
-          bars += `<div class="cal-bar${ds === e.start ? ' bar-start' : ''}${ds === eventEnd(e) ? ' bar-end' : ''}" data-action="open-event-cal" data-id="${e.id}" title="${esc(e.name)}">${showName ? esc(e.name) : ''}</div>`;
+          bars += `<div class="cal-bar${e.multiDay ? '' : ' single'}${ds === e.start ? ' bar-start' : ''}${ds === eventEnd(e) ? ' bar-end' : ''}" data-action="open-event-cal" data-id="${e.id}" title="${esc(e.name)}">${showName ? esc(e.name) : ''}</div>`;
         } else bars += '<div class="cal-bar empty"></div>';
       }
       const items = byDate[ds] || [];

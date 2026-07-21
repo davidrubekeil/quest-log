@@ -1008,6 +1008,8 @@ input { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .cal-bar.empty { background: transparent; pointer-events: none; }
+/* Eintägige Events: nur Outline statt vollem Balken, damit sie sich von mehrtägigen abheben. */
+.cal-bar.single { box-sizing: border-box; background: transparent; border: 1px solid #7A6E8A; color: #7A6E8A; }
 .cal-bar.bar-start { margin-left: 0; }
 .cal-bar.bar-end { margin-right: 0; }
 
