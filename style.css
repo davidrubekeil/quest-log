@@ -1124,6 +1124,18 @@ input { font: inherit; color: inherit; }
 .routine-streak.on { color: #E06B3B; }
 .routine-streak.on .ico { fill: currentColor; }
 .routine-row:hover .del { opacity: 0.4; }
+.routine-period-btn {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  padding: 1px 4px;
+  opacity: 0;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+.routine-row:hover .routine-period-btn { opacity: 1; }
+.routine-period-btn:hover { border-color: var(--ink); color: var(--ink); }
 
 /* Strava-Sync am Dashboard */
 .strava-box { margin-bottom: 22px; }

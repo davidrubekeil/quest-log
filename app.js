@@ -225,9 +225,9 @@
 
   /* Routinen sind einer Tageszeit zugeordnet (Morgens/Mittags/Abends). */
   const ROUTINE_PERIODS = [
-    { key: 'morgens', label: 'Morgens' },
-    { key: 'mittags', label: 'Mittags' },
-    { key: 'abends', label: 'Abends' },
+    { key: 'morgens', label: 'Morgens', short: 'Mo' },
+    { key: 'mittags', label: 'Mittags', short: 'Mi' },
+    { key: 'abends', label: 'Abends', short: 'Ab' },
   ];
   /* Migration alter Routinen ohne period-Feld: am Titel erkennen, sonst „mittags" als Default. */
   const inferRoutinePeriod = title => {
@@ -1403,8 +1403,13 @@
     const title = isToday
       ? `<span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>`
       : `<span class="row-text">${esc(r.title)}</span>`;
+    const curPeriod = ROUTINE_PERIODS.find(p => p.key === r.period) || ROUTINE_PERIODS[1];
+    const periodBtn = isToday
+      ? `<button class="routine-period-btn" data-action="cycle-routine-period" data-id="${r.id}" title="Zu einer anderen Tageszeit verschieben (aktuell: ${curPeriod.label})">${curPeriod.short}</button>`
+      : '';
     const trailing = isToday
       ? `<span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
+      ${periodBtn}
       <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>${arrows}`
       : '';
     return `<li class="routine-row${done ? ' done' : ''}">
@@ -1725,6 +1730,7 @@
       case 'del-scratch': { if (isDateStr(el.dataset.date)) delJournalNote(el.dataset.date, id); break; }
       case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
+      case 'cycle-routine-period': { const r = state.routines.find(r => r.id === id); if (!r) return; const i = ROUTINE_PERIODS.findIndex(p => p.key === r.period); r.period = ROUTINE_PERIODS[(i + 1) % ROUTINE_PERIODS.length].key; break; }
       case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
       case 'toggle-journal-week': { const k = el.dataset.key; if (!journalOpenWeeks) return; if (journalOpenWeeks.has(k)) journalOpenWeeks.delete(k); else journalOpenWeeks.add(k); break; }
       case 'routine-up': { swapRoutines(id, -1); break; }
