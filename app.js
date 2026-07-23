@@ -223,12 +223,32 @@
 
   const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {}, routines: [] });
 
+  /* Routinen sind einer Tageszeit zugeordnet (Morgens/Mittags/Abends). */
+  const ROUTINE_PERIODS = [
+    { key: 'morgens', label: 'Morgens' },
+    { key: 'mittags', label: 'Mittags' },
+    { key: 'abends', label: 'Abends' },
+  ];
+  /* Migration alter Routinen ohne period-Feld: am Titel erkennen, sonst „mittags" als Default. */
+  const inferRoutinePeriod = title => {
+    const t = String(title || '').toLowerCase();
+    if (t.includes('morgen')) return 'morgens';
+    if (t.includes('abend')) return 'abends';
+    return 'mittags';
+  };
   /* Standard-Routinen bei allererster Verwendung (wenn noch nie ein routines-Feld existierte). */
-  const DEFAULT_ROUTINES = ['Journal (morgens)', 'Journal (abends)', 'Lesen', 'Chronik', 'Supplements'];
+  const DEFAULT_ROUTINES = [
+    { title: 'Journal (morgens)', period: 'morgens' },
+    { title: 'Lesen', period: 'mittags' },
+    { title: 'Chronik', period: 'mittags' },
+    { title: 'Supplements', period: 'mittags' },
+    { title: 'Journal (abends)', period: 'abends' },
+  ];
   function normalizeRoutine(raw) {
-    if (typeof raw === 'string') return { id: uid(), title: raw, done: [] };
+    if (typeof raw === 'string') return { id: uid(), title: raw, period: inferRoutinePeriod(raw), done: [] };
     if (!raw || typeof raw !== 'object') return null;
-    return { id: raw.id || uid(), title: String(raw.title ?? ''), done: (Array.isArray(raw.done) ? raw.done : []).filter(isDateStr) };
+    const period = ROUTINE_PERIODS.some(p => p.key === raw.period) ? raw.period : inferRoutinePeriod(raw.title);
+    return { id: raw.id || uid(), title: String(raw.title ?? ''), period, done: (Array.isArray(raw.done) ? raw.done : []).filter(isDateStr) };
   }
 
   function normalizeItem(raw) {
@@ -498,6 +518,18 @@
     let best = 0, run = 0, prev = null;
     for (const d of dates) { run = (prev && dayDiff(prev, d) === 1) ? run + 1 : 1; best = Math.max(best, run); prev = d; }
     return best;
+  }
+  /* Reihenfolge zweier Routinen innerhalb derselben Tageszeit tauschen (dir: -1 hoch, +1 runter),
+     unabhängig davon, welche Routinen anderer Tageszeiten dazwischen in state.routines liegen. */
+  function swapRoutines(id, dir) {
+    const r = state.routines.find(r => r.id === id);
+    if (!r) return;
+    const ids = state.routines.filter(x => x.period === r.period).map(x => x.id);
+    const pos = ids.indexOf(id), target = pos + dir;
+    if (target < 0 || target >= ids.length) return;
+    const i1 = state.routines.findIndex(x => x.id === id);
+    const i2 = state.routines.findIndex(x => x.id === ids[target]);
+    [state.routines[i1], state.routines[i2]] = [state.routines[i2], state.routines[i1]];
   }
 
   /* Strava-Aktivität → Journaleintrag */
@@ -1365,31 +1397,43 @@
 
   /* Routinen mit Streak. Heute: volle Verwaltung inkl. Umsortieren. Vergangene Tage: nur
      nachträgliches Abhaken (Streak-Backfill), ohne Umbenennen/Löschen/Neu/Umsortieren. */
+  function renderRoutineRow(r, dateStr, isToday, arrows) {
+    const done = routineDoneOn(r, dateStr);
+    const streak = routineCurrentStreak(r);
+    const title = isToday
+      ? `<span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>`
+      : `<span class="row-text">${esc(r.title)}</span>`;
+    const trailing = isToday
+      ? `<span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
+      <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>${arrows}`
+      : '';
+    return `<li class="routine-row${done ? ' done' : ''}">
+      <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" data-date="${dateStr}" aria-label="Abhaken">${ICONS.check}</button>
+      ${title}${trailing}
+    </li>`;
+  }
+
   function renderRoutines(dateStr = todayStr()) {
     const isToday = dateStr === todayStr();
-    const n = state.routines.length;
-    const rows = state.routines.map((r, i) => {
-      const done = routineDoneOn(r, dateStr);
-      const streak = routineCurrentStreak(r);
-      const title = isToday
-        ? `<span class="row-text editable" data-edit="routine-title" data-id="${r.id}">${esc(r.title)}</span>`
-        : `<span class="row-text">${esc(r.title)}</span>`;
-      const arrows = (isToday && n > 1) ? `<span class="arrows">
-          <button class="arrow-up" data-action="routine-up" data-index="${i}"${i === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
-          <button class="arrow-down" data-action="routine-down" data-index="${i}"${i === n - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
-        </span>` : '';
-      const trailing = isToday
-        ? `<span class="routine-streak${streak > 0 ? ' on' : ''}" title="Aktueller Streak: ${streak} Tag${streak === 1 ? '' : 'e'} · längster: ${routineLongestStreak(r)}">${ICONS.flame}${streak}</span>
-        <button class="del" data-action="del-routine" data-id="${r.id}" aria-label="Routine löschen">${ICONS.x}</button>${arrows}`
-        : '';
-      return `<li class="routine-row${done ? ' done' : ''}">
-        <button class="checkbox" data-action="toggle-routine" data-id="${r.id}" data-date="${dateStr}" aria-label="Abhaken">${ICONS.check}</button>
-        ${title}${trailing}
-      </li>`;
+    const groups = ROUTINE_PERIODS.map(p => {
+      const list = state.routines.filter(r => r.period === p.key);
+      const n = list.length;
+      const rows = list.map((r, i) => {
+        const arrows = (isToday && n > 1) ? `<span class="arrows">
+            <button class="arrow-up" data-action="routine-up" data-id="${r.id}"${i === 0 ? ' disabled' : ''} aria-label="Nach oben">${ICONS.chevron}</button>
+            <button class="arrow-down" data-action="routine-down" data-id="${r.id}"${i === n - 1 ? ' disabled' : ''} aria-label="Nach unten">${ICONS.chevron}</button>
+          </span>` : '';
+        return renderRoutineRow(r, dateStr, isToday, arrows);
+      }).join('');
+      return `<div class="routine-group">
+        <div class="routine-group-label">${p.label}</div>
+        <ul class="routine-list">${rows || '<div class="empty">— keine —</div>'}</ul>
+        ${isToday ? addMini('add-routine', 'Neue Routine', ` data-period="${p.key}"`) : ''}
+      </div>`;
     }).join('');
     return `<div class="dash-routines">
       <div class="dash-label routines-head" data-action="toggle-routines-open"><span class="chev${routinesOpen ? ' open' : ''}">${ICONS.chevron}</span>Routinen${isToday ? '' : ' — nachtragen'}</div>
-      ${routinesOpen ? `<ul class="routine-list">${rows || '<div class="empty">— keine Routinen —</div>'}</ul>${isToday ? addMini('add-routine', 'Neue Routine') : ''}` : ''}
+      ${routinesOpen ? groups : ''}
     </div>`;
   }
 
@@ -1683,8 +1727,8 @@
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
       case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
       case 'toggle-journal-week': { const k = el.dataset.key; if (!journalOpenWeeks) return; if (journalOpenWeeks.has(k)) journalOpenWeeks.delete(k); else journalOpenWeeks.add(k); break; }
-      case 'routine-up': { const i = Number(el.dataset.index); if (i <= 0) return; [state.routines[i - 1], state.routines[i]] = [state.routines[i], state.routines[i - 1]]; break; }
-      case 'routine-down': { const i = Number(el.dataset.index); if (i < 0 || i >= state.routines.length - 1) return; [state.routines[i + 1], state.routines[i]] = [state.routines[i], state.routines[i + 1]]; break; }
+      case 'routine-up': { swapRoutines(id, -1); break; }
+      case 'routine-down': { swapRoutines(id, 1); break; }
 
       default: return;
     }
@@ -1754,7 +1798,7 @@
       case 'add-ms': { const q = state.quests.find(q => q.id === form.dataset.quest); if (!q) return; q.milestones.push({ id: uid(), text, deadline: null }); refocusSel = `form[data-action="add-ms"][data-quest="${q.id}"] input`; break; }
       case 'add-agenda': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); const eventId = form.dataset.event || null; state.agenda.push({ id: uid(), text, date, done: false, doneAt: null, subs: [], eventId }); refocusSel = `form[data-action="add-agenda"]${eventId ? `[data-event="${eventId}"]` : ''} input`; break; }
       case 'add-scratch': { const date = isDateStr(form.dataset.date) ? form.dataset.date : todayStr(); addJournalNote(date, text); refocusSel = `form[data-action="add-scratch"][data-date="${date}"] input`; break; }
-      case 'add-routine': { state.routines.push({ id: uid(), title: text, done: [] }); refocusSel = `form[data-action="add-routine"] input`; break; }
+      case 'add-routine': { const period = ROUTINE_PERIODS.some(p => p.key === form.dataset.period) ? form.dataset.period : 'mittags'; state.routines.push({ id: uid(), title: text, period, done: [] }); refocusSel = `form[data-action="add-routine"][data-period="${period}"] input`; break; }
       case 'dash-add-agenda-sub': { const a = state.agenda.find(a => a.id === form.dataset.agenda); if (!a) return; a.subs.push({ id: uid(), text, done: false, doneAt: null }); refocusSel = `form[data-action="dash-add-agenda-sub"][data-agenda="${a.id}"] input`; break; }
       case 'dash-add-qsub': {
         const q = state.quests.find(q => q.id === form.dataset.quest);

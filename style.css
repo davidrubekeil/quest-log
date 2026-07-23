@@ -1112,7 +1112,10 @@ input { font: inherit; color: inherit; }
 
 /* Routinen mit Streak */
 .dash-routines { margin-bottom: 26px; }
-.routine-list { list-style: none; margin: 4px 0 0; }
+.routine-group { margin-top: 14px; }
+.routine-group:first-of-type { margin-top: 8px; }
+.routine-group-label { font-family: var(--grotesk); font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--rule); }
+.routine-list { list-style: none; margin: 2px 0 0; }
 .routine-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
 .routine-row .row-text { flex: 1; min-width: 0; font-size: 13px; }
 .routine-row.done .row-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--rule); }
