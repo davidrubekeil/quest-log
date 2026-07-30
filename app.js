@@ -31,6 +31,33 @@
   const STRAVA_KEY = 'questlog-strava-refresh';
   const stravaToken = () => { try { return localStorage.getItem(STRAVA_KEY) || null; } catch (e) { return null; } };
   const setStravaToken = t => { try { if (t) localStorage.setItem(STRAVA_KEY, t); else localStorage.removeItem(STRAVA_KEY); } catch (e) {} };
+
+  /* Timer/Pomodoro: eigener, geräte-lokaler Storage-Key (kein Teil des Backups/Exports —
+     reiner UI-Zustand, nicht "Daten"). */
+  const TIMER_KEY = 'questlog-timer-v1';
+  const POMODORO = { work: 25 * 60, short: 5 * 60, long: 15 * 60, cyclesUntilLong: 4 };
+  const freshTimer = () => ({ mode: 'countdown', durationSec: 10 * 60, running: false, endAt: null, remainingSec: 10 * 60, phase: 'work', cycle: 1 });
+  function sanitizeTimer(raw) {
+    const f = freshTimer();
+    if (!raw || typeof raw !== 'object') return f;
+    const t = {
+      mode: raw.mode === 'pomodoro' ? 'pomodoro' : 'countdown',
+      durationSec: (Number.isFinite(raw.durationSec) && raw.durationSec > 0) ? raw.durationSec : f.durationSec,
+      running: !!raw.running,
+      endAt: Number.isFinite(raw.endAt) ? raw.endAt : null,
+      remainingSec: Number.isFinite(raw.remainingSec) ? raw.remainingSec : f.remainingSec,
+      phase: ['work', 'short', 'long'].includes(raw.phase) ? raw.phase : 'work',
+      cycle: (Number.isFinite(raw.cycle) && raw.cycle > 0) ? raw.cycle : 1,
+    };
+    // Lief der Timer weiter, während die App zu war? Wenn die Zeit inzwischen abgelaufen ist,
+    // nicht rückwirkend pingen/Phase wechseln (Ton nur, solange die App offen war) — einfach anhalten.
+    if (t.running && t.endAt) {
+      const remaining = Math.round((t.endAt - Date.now()) / 1000);
+      if (remaining <= 0) { t.running = false; t.endAt = null; t.remainingSec = 0; }
+    }
+    return t;
+  }
+  function loadTimer() { try { const raw = localStorage.getItem(TIMER_KEY); if (raw) return sanitizeTimer(JSON.parse(raw)); } catch (e) {} return freshTimer(); }
   const STRAVA_MATCH = [
     { types: ['Ride', 'VirtualRide', 'MountainBikeRide', 'GravelRide', 'EBikeRide', 'EMountainBikeRide'], keywords: ['rad', 'fahrrad', 'rennrad', 'velo', 'bike', 'radeln'] },
     { types: ['Run', 'TrailRun', 'VirtualRun'], keywords: ['lauf', 'joggen', 'jog', 'run'] },
@@ -668,6 +695,8 @@
   const tabbar = document.getElementById('tabbar');
 
   let state = loadState();
+  let timer = loadTimer();
+  const saveTimer = () => { try { localStorage.setItem(TIMER_KEY, JSON.stringify(timer)); } catch (e) {} };
   let activeTab = 'calendar';   // Tagesstartseite: Kalender/Tag mit heute als Default
   let questCat = 'main';
   let activeQuestId = null;
@@ -1442,6 +1471,124 @@
     </div>`;
   }
 
+  /* ---------- Timer / Pomodoro ---------- */
+
+  const timerPhaseSec = phase => phase === 'short' ? POMODORO.short : phase === 'long' ? POMODORO.long : POMODORO.work;
+  const timerDurationSec = () => timer.mode === 'pomodoro' ? timerPhaseSec(timer.phase) : timer.durationSec;
+  const timerRemainingSec = () => (timer.running && timer.endAt) ? Math.max(0, Math.round((timer.endAt - Date.now()) / 1000)) : timer.remainingSec;
+
+  let audioCtx = null;
+  /* AudioContext nur innerhalb eines echten Klicks (Start) erzeugen/fortsetzen — sonst greifen
+     Autoplay-Sperren der Browser beim späteren, durch setInterval ausgelösten Piepton. */
+  function ensureAudioCtx() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      else if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    } catch (e) {}
+  }
+  function playTimerBeep() {
+    if (!audioCtx) return;
+    try {
+      const tone = (freq, start, dur) => {
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        const t0 = audioCtx.currentTime + start;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.3, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.start(t0); osc.stop(t0 + dur + 0.05);
+      };
+      tone(880, 0, 0.18); tone(880, 0.24, 0.18); tone(1046, 0.48, 0.32);
+    } catch (e) {}
+  }
+
+  function timerSetMode(mode) {
+    timer.mode = mode === 'pomodoro' ? 'pomodoro' : 'countdown';
+    timer.running = false; timer.endAt = null;
+    if (timer.mode === 'pomodoro') { timer.phase = 'work'; timer.cycle = 1; }
+    timer.remainingSec = timerDurationSec();
+    saveTimer();
+  }
+  function timerSetDuration(min) {
+    timer.durationSec = Math.max(60, Math.min(180 * 60, Math.round(min * 60)));
+    if (!timer.running) timer.remainingSec = timer.durationSec;
+    saveTimer();
+  }
+  function timerStart() {
+    ensureAudioCtx();
+    const remaining = timerRemainingSec();
+    const dur = remaining > 0 ? remaining : timerDurationSec();
+    timer.running = true;
+    timer.endAt = Date.now() + dur * 1000;
+    timer.remainingSec = dur;
+    saveTimer();
+  }
+  function timerPause() {
+    timer.remainingSec = timerRemainingSec();
+    timer.running = false; timer.endAt = null;
+    saveTimer();
+  }
+  function timerReset() {
+    timer.running = false; timer.endAt = null;
+    timer.remainingSec = timerDurationSec();
+    saveTimer();
+  }
+  /* Pomodoro: Arbeiten → Pause (jede vierte Runde lange Pause) → wieder Arbeiten, Runde +1. */
+  function timerAdvancePhase() {
+    if (timer.phase === 'work') timer.phase = (timer.cycle % POMODORO.cyclesUntilLong === 0) ? 'long' : 'short';
+    else { timer.phase = 'work'; timer.cycle += 1; }
+    timer.running = false; timer.endAt = null;
+    timer.remainingSec = timerDurationSec();
+  }
+  function timerComplete() {
+    playTimerBeep();
+    if (timer.mode === 'pomodoro') timerAdvancePhase();
+    else { timer.running = false; timer.endAt = null; timer.remainingSec = 0; }
+    saveTimer();
+    render();
+  }
+  /* Läuft appweit alle 500ms; aktualisiert die Anzeige direkt im DOM (kein render()), damit ein
+     laufender Timer nicht mehrmals pro Sekunde die ganze Seite neu zeichnet. */
+  function timerTick() {
+    if (!timer.running || !timer.endAt) return;
+    const remaining = Math.max(0, Math.round((timer.endAt - Date.now()) / 1000));
+    if (remaining <= 0) { timerComplete(); return; }
+    const disp = document.querySelector('.timer-display');
+    if (disp) disp.textContent = `${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
+  }
+
+  function renderTimerBox() {
+    const remaining = timerRemainingSec();
+    const dur = timerDurationSec();
+    const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+    const ss = String(remaining % 60).padStart(2, '0');
+    const phaseLabel = timer.mode === 'pomodoro'
+      ? (timer.phase === 'work' ? `Arbeiten · Runde ${((timer.cycle - 1) % POMODORO.cyclesUntilLong) + 1}/${POMODORO.cyclesUntilLong}` : timer.phase === 'short' ? 'Kurze Pause' : 'Lange Pause')
+      : '';
+    const finished = timer.mode === 'countdown' && !timer.running && remaining === 0;
+    const fresh = !timer.running && remaining === dur;
+    const durationInput = (timer.mode === 'countdown' && fresh)
+      ? `<div class="timer-set"><input type="number" min="1" max="180" value="${Math.round(timer.durationSec / 60)}" data-field="timer-duration" class="timer-min-input"> min</div>`
+      : '';
+    const startLabel = (!timer.running && !fresh && remaining > 0) ? 'Weiter' : 'Start';
+    const controls = timer.running
+      ? `<button class="timer-btn" data-action="timer-pause">Pause</button>`
+      : `<button class="timer-btn primary" data-action="timer-start">${startLabel}</button>`;
+    const resetBtn = !fresh ? `<button class="timer-btn ghost" data-action="timer-reset">Reset</button>` : '';
+    return `<div class="dash-timer${finished ? ' finished' : ''}">
+      <div class="dash-label">Timer</div>
+      <div class="step-tabs">
+        <button data-action="timer-mode" data-mode="countdown" class="${timer.mode === 'countdown' ? 'active' : ''}">Timer</button>
+        <button data-action="timer-mode" data-mode="pomodoro" class="${timer.mode === 'pomodoro' ? 'active' : ''}">Pomodoro</button>
+      </div>
+      ${phaseLabel ? `<div class="timer-phase">${phaseLabel}</div>` : ''}
+      <div class="timer-display">${mm}:${ss}</div>
+      ${durationInput}
+      <div class="timer-controls">${controls}${resetBtn}</div>
+    </div>`;
+  }
+
   function renderStravaBox(dateStr) {
     const connected = !!stravaToken();
     const btn = connected
@@ -1511,7 +1658,7 @@
         ${overdueBox}
         ${tasksBox}
       </div>
-      <div class="dash-side">${isToday ? renderRoutines() + renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
+      <div class="dash-side">${isToday ? renderTimerBox() + renderRoutines() + renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
     </div>`;
   }
 
@@ -1732,6 +1879,10 @@
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
       case 'cycle-routine-period': { const r = state.routines.find(r => r.id === id); if (!r) return; const i = ROUTINE_PERIODS.findIndex(p => p.key === r.period); r.period = ROUTINE_PERIODS[(i + 1) % ROUTINE_PERIODS.length].key; break; }
       case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
+      case 'timer-mode': timerSetMode(el.dataset.mode); break;
+      case 'timer-start': timerStart(); break;
+      case 'timer-pause': timerPause(); break;
+      case 'timer-reset': timerReset(); break;
       case 'toggle-journal-week': { const k = el.dataset.key; if (!journalOpenWeeks) return; if (journalOpenWeeks.has(k)) journalOpenWeeks.delete(k); else journalOpenWeeks.add(k); break; }
       case 'routine-up': { swapRoutines(id, -1); break; }
       case 'routine-down': { swapRoutines(id, 1); break; }
@@ -1756,6 +1907,12 @@
       const tf = timeInput.dataset.field, tv = isTimeStr(timeInput.value) ? timeInput.value : null;
       const ev = state.events.find(x => x.id === timeInput.dataset.id);
       if (ev) { if (tf === 'ev-start-time') ev.startTime = tv; else if (tf === 'ev-end-time') ev.endTime = tv; }
+      save(); render(); return;
+    }
+    const timerInput = e.target.closest('input[type="number"][data-field="timer-duration"]');
+    if (timerInput) {
+      const min = Number(timerInput.value);
+      if (Number.isFinite(min) && min > 0) timerSetDuration(min);
       save(); render(); return;
     }
     const input = e.target.closest('input[type="date"][data-field]');
@@ -1852,6 +2009,7 @@
   function onReturn() { if (document.visibilityState !== 'visible') return; const ch = auditAllStreaks(); if (ch || dayStamp !== todayStr()) { dayStamp = todayStr(); if (ch) save(); render(); } }
   document.addEventListener('visibilitychange', onReturn);
   window.addEventListener('focus', onReturn);
+  setInterval(timerTick, 500);
 
   /* ---------- Strava-Sync ---------- */
 

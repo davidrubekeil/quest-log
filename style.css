@@ -1111,6 +1111,31 @@ input { font: inherit; color: inherit; }
 .quote-src { margin-top: 8px; font-size: 11px; letter-spacing: 0.04em; color: var(--muted); }
 
 /* Routinen mit Streak */
+/* Timer / Pomodoro */
+.dash-timer { margin-bottom: 26px; }
+.dash-timer .step-tabs { margin-bottom: 0; }
+.timer-phase { font-size: 11px; color: var(--muted); margin-top: 10px; }
+.timer-display { font-family: var(--mono); font-size: 36px; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; margin: 6px 0 12px; }
+.dash-timer.finished .timer-display { color: var(--red); }
+.timer-set { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.timer-min-input { width: 52px; font-family: var(--mono); font-size: 13px; color: var(--ink); background: transparent; border: 1px solid var(--rule); padding: 3px 6px; }
+.timer-controls { display: flex; gap: 8px; }
+.timer-btn {
+  font-family: var(--grotesk);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 16px;
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  background: transparent;
+  transition: opacity 0.12s;
+}
+.timer-btn.primary { background: var(--ink); color: var(--paper); }
+.timer-btn.ghost { border-color: var(--rule); color: var(--muted); }
+.timer-btn:hover { opacity: 0.75; }
+
 .dash-routines { margin-bottom: 26px; }
 .routine-group { margin-top: 14px; }
 .routine-group:first-of-type { margin-top: 8px; }
