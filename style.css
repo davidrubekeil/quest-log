@@ -1204,6 +1204,7 @@ input { font: inherit; color: inherit; }
 
 /* Journal im Archiv: nach Kalenderwochen gruppiert, ein-/ausklappbar */
 .archive.journal { max-width: 640px; }
+.journal-export { margin-bottom: 22px; }
 .journal-week { margin-bottom: 6px; }
 .journal-week-head {
   display: flex;

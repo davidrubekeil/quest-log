@@ -449,16 +449,58 @@
 
   /* ---------- Datensicherung (Export/Import als JSON-Datei) ---------- */
 
+  function downloadFile(filename, text, mime) {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function exportData() {
     try {
-      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `questlog-backup-${todayStr()}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadFile(`questlog-backup-${todayStr()}.json`, JSON.stringify(state, null, 2), 'application/json');
       backupStatus = `Gesichert: questlog-backup-${todayStr()}.json`;
     } catch (e) { backupStatus = 'Export fehlgeschlagen.'; }
+  }
+
+  /* Plain-Text-Zeile einer Strava-Aktivität für den Journal-Export (ohne HTML). */
+  function activityPlainLine(a) {
+    const strength = isStrengthLike(a.type);
+    const parts = [];
+    if (!strength && a.distanceKm != null) parts.push(`${a.distanceKm.toFixed(1).replace('.', ',')} km`);
+    if (a.movingMin != null) parts.push(`${Math.round(a.movingMin)} min`);
+    if (!strength && a.avgSpeedMs != null && a.avgSpeedMs > 0) {
+      if (isRunLike(a.type)) { const pace = 1000 / a.avgSpeedMs / 60; const m = Math.floor(pace), s = Math.round((pace - m) * 60); parts.push(`${m}:${String(s).padStart(2, '0')} /km`); }
+      else parts.push(`${(a.avgSpeedMs * 3.6).toFixed(1).replace('.', ',')} km/h`);
+    }
+    if (!strength && a.elevM != null && a.elevM > 0) parts.push(`${Math.round(a.elevM)} hm`);
+    if (strength) { const sets = countSets(a.description); if (sets > 0) parts.push(`${sets} ${sets === 1 ? 'Satz' : 'Sätze'}`); }
+    const label = a.type ? `${a.name || a.type} (${a.type})` : a.name;
+    const time = hmFromISO(a.at);
+    return `${time ? time + ' – ' : ''}${label}${parts.length ? ' – ' + parts.join(', ') : ''}`;
+  }
+
+  /* Journal als lesbare .txt-Datei, chronologisch (älteste zuerst), alle Tage. */
+  function exportJournalTxt() {
+    const dates = journalDates().slice().reverse();
+    if (!dates.length) { journalExportStatus = 'Kein Journal zum Exportieren vorhanden.'; return; }
+    const today = new Date();
+    const lines = [`QUEST-LOG — JOURNAL`, `Exportiert am ${today.getDate()}. ${MONTHS[today.getMonth()]} ${today.getFullYear()}`, ''];
+    for (const ds of dates) {
+      const d = parseDate(ds);
+      const header = `${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+      lines.push(header, '-'.repeat(header.length));
+      for (const n of journalNotes(ds)) lines.push(`• ${n.text}`);
+      for (const a of journalActs(ds)) lines.push(`◆ ${activityPlainLine(a)}`);
+      lines.push('');
+    }
+    try {
+      const filename = `questlog-journal-${todayStr()}.txt`;
+      downloadFile(filename, lines.join('\n'), 'text/plain;charset=utf-8');
+      journalExportStatus = `Exportiert: ${filename}`;
+    } catch (e) { journalExportStatus = 'Export fehlgeschlagen.'; }
   }
 
   function importData(text) {
@@ -716,6 +758,7 @@
   let refocusSel = null;
   let pendingEditSel = null;
   let backupStatus = '';
+  let journalExportStatus = '';
 
   const dotHtml = p => `<span class="prio-dot" style="background:${p.color}" title="Priorität: ${p.label}"></span>`;
   const sectionOptions = sel => SECTIONS.map(s => `<option value="${s.key}"${s.key === sel ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
@@ -1068,7 +1111,11 @@
         ${open ? `<div class="journal-week-body">${w.dates.map(renderJournalDay).join('')}</div>` : ''}
       </section>`;
     }).join('');
-    return `<div class="archive journal">${weekBlocks}</div>`;
+    const exportBar = `<div class="journal-export">
+      <button class="backup-btn ghost" data-action="export-journal-txt">Als TXT exportieren</button>
+      ${journalExportStatus ? `<div class="backup-status">${esc(journalExportStatus)}</div>` : ''}
+    </div>`;
+    return `<div class="archive journal">${exportBar}${weekBlocks}</div>`;
   }
 
   function renderArchiveTab() {
@@ -1782,6 +1829,7 @@
     if (action === 'strava-sync') { stravaSync(el.dataset.date); return; }
     if (action === 'export-data') { exportData(); render(); return; }
     if (action === 'import-data') { const inp = document.getElementById('import-file'); if (inp) inp.click(); return; }
+    if (action === 'export-journal-txt') { exportJournalTxt(); render(); return; }
 
     switch (action) {
       case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
