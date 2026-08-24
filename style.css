@@ -1216,6 +1216,18 @@ input { font: inherit; color: inherit; }
 }
 .journal-week-label { flex: 1; font-family: var(--grotesk); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
 .journal-week.open > .journal-week-head .chev .ico { transform: none; }
+.journal-week-export {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  opacity: 0;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+.journal-week-head:hover .journal-week-export { opacity: 1; }
+.journal-week-export:hover { border-color: var(--ink); color: var(--ink); }
 .journal-week-body { padding-top: 20px; }
 .journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
 .journal-day:last-child { border-bottom: none; }

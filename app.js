@@ -483,11 +483,11 @@
   }
 
   /* Journal als lesbare .txt-Datei, chronologisch (älteste zuerst), alle Tage. */
-  function exportJournalTxt() {
-    const dates = journalDates().slice().reverse();
-    if (!dates.length) { journalExportStatus = 'Kein Journal zum Exportieren vorhanden.'; return; }
+  /* Gemeinsamer Textkörper für Voll- und Wochen-Export: Tage chronologisch, mit Notizen +
+     Aktivitäten. titleSuffix hängt z. B. den Wochenbereich an den Kopftitel an. */
+  function journalTxtBody(dates, titleSuffix) {
     const today = new Date();
-    const lines = [`QUEST-LOG — JOURNAL`, `Exportiert am ${today.getDate()}. ${MONTHS[today.getMonth()]} ${today.getFullYear()}`, ''];
+    const lines = [`QUEST-LOG — JOURNAL${titleSuffix ? ` (${titleSuffix})` : ''}`, `Exportiert am ${today.getDate()}. ${MONTHS[today.getMonth()]} ${today.getFullYear()}`, ''];
     for (const ds of dates) {
       const d = parseDate(ds);
       const header = `${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
@@ -496,9 +496,29 @@
       for (const a of journalActs(ds)) lines.push(`◆ ${activityPlainLine(a)}`);
       lines.push('');
     }
+    return lines.join('\n');
+  }
+
+  function exportJournalTxt() {
+    const dates = journalDates().slice().reverse();
+    if (!dates.length) { journalExportStatus = 'Kein Journal zum Exportieren vorhanden.'; return; }
     try {
       const filename = `questlog-journal-${todayStr()}.txt`;
-      downloadFile(filename, lines.join('\n'), 'text/plain;charset=utf-8');
+      downloadFile(filename, journalTxtBody(dates), 'text/plain;charset=utf-8');
+      journalExportStatus = `Exportiert: ${filename}`;
+    } catch (e) { journalExportStatus = 'Export fehlgeschlagen.'; }
+  }
+
+  /* Export nur einer Kalenderwoche (Montag-Schlüssel wie bei der Journal-Gruppierung). */
+  function exportJournalWeekTxt(weekKey) {
+    if (!isDateStr(weekKey)) return;
+    const dates = journalDates().filter(ds => addDays(ds, -wdIndexMon(parseDate(ds))) === weekKey).reverse();
+    if (!dates.length) { journalExportStatus = 'Keine Einträge in dieser Woche.'; return; }
+    const monday = parseDate(weekKey), sunday = parseDate(addDays(weekKey, 6));
+    const rangeLabel = `${monday.getDate()}. ${MONTHS[monday.getMonth()]} – ${sunday.getDate()}. ${MONTHS[sunday.getMonth()]} ${sunday.getFullYear()}`;
+    try {
+      const filename = `questlog-journal-${weekKey}.txt`;
+      downloadFile(filename, journalTxtBody(dates, rangeLabel), 'text/plain;charset=utf-8');
       journalExportStatus = `Exportiert: ${filename}`;
     } catch (e) { journalExportStatus = 'Export fehlgeschlagen.'; }
   }
@@ -1107,6 +1127,7 @@
           <span class="chev">${ICONS.chevron}</span>
           <span class="journal-week-label">${label}</span>
           <span class="count">${entryCount}</span>
+          <button class="journal-week-export" data-action="export-journal-week-txt" data-key="${w.key}" aria-label="Diese Woche als TXT exportieren" title="Diese Woche als TXT exportieren">TXT</button>
         </header>
         ${open ? `<div class="journal-week-body">${w.dates.map(renderJournalDay).join('')}</div>` : ''}
       </section>`;
@@ -1830,6 +1851,7 @@
     if (action === 'export-data') { exportData(); render(); return; }
     if (action === 'import-data') { const inp = document.getElementById('import-file'); if (inp) inp.click(); return; }
     if (action === 'export-journal-txt') { exportJournalTxt(); render(); return; }
+    if (action === 'export-journal-week-txt') { exportJournalWeekTxt(el.dataset.key); render(); return; }
 
     switch (action) {
       case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
