@@ -1292,9 +1292,24 @@ input { font: inherit; color: inherit; }
   transition: color 0.12s, border-color 0.12s;
 }
 .dash-tag:hover { color: var(--ink); border-color: var(--muted); }
-/* Schritt-Kontext bei Unterschritt-Aufgaben: rein informativ, kein Klick-Affordance. */
-.dash-tag-step { border-style: dashed; cursor: default; }
-.dash-tag-step:hover { color: var(--muted); border-color: var(--rule); }
+
+/* Breadcrumb bei Unterschritt-Aufgaben: Quest › Schritt › ggf. verschachtelte Vorfahren —
+   zeigt die volle Einordnung auch bei tiefer Verschachtelung, truncated statt umzubrechen. */
+.dash-crumb {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  border: 1px solid var(--rule);
+  padding: 2px 7px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.dash-crumb:hover { color: var(--ink); border-color: var(--muted); }
 
 .dash-overdue-tag {
   flex: none;

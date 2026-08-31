@@ -187,6 +187,16 @@
     ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
     : { done: s.done ? 1 : 0, total: 1 };
   function findSubRec(subs, id) { for (const s of subs) { if (s.id === id) return s; const f = findSubRec(s.subs, id); if (f) return f; } return null; }
+  /* Liste der Vorfahren-Unterschritte (nicht das Ziel selbst) bis zur gesuchten id, für den
+     Breadcrumb einer verschachtelten Aufgabe. */
+  function findSubAncestors(subs, id, trail = []) {
+    for (const s of subs) {
+      if (s.id === id) return trail;
+      const found = findSubAncestors(s.subs, id, [...trail, s]);
+      if (found) return found;
+    }
+    return null;
+  }
   function removeSubRec(subs, id) { const i = subs.findIndex(s => s.id === id); if (i >= 0) { subs.splice(i, 1); return true; } for (const s of subs) if (removeSubRec(s.subs, id)) return true; return false; }
 
   /* ---------- Schritt ---------- */
@@ -679,12 +689,14 @@
     return out;
   }
 
-  function walkSubsMatching(subs, questId, stepId, questTitle, stepTitle, dateMatches, wantDone, out) {
+  /* pathTitles wächst pro Verschachtelungsebene (Schrittname, dann jeder Unterschritt-Vorfahre
+     dazwischen) — ergibt den vollen Breadcrumb bis zur gefundenen Aufgabe selbst. */
+  function walkSubsMatching(subs, questId, stepId, questTitle, pathTitles, dateMatches, wantDone, out) {
     for (const sub of subs) {
       if (sub.scheduledDate && subDone(sub) === wantDone && dateMatches(sub.scheduledDate)) {
-        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, stepTitle, done: wantDone, subs: sub.subs, refDate: sub.scheduledDate });
+        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, pathTitles: pathTitles.slice(), done: wantDone, subs: sub.subs, refDate: sub.scheduledDate });
       }
-      walkSubsMatching(sub.subs, questId, stepId, questTitle, stepTitle, dateMatches, wantDone, out);
+      walkSubsMatching(sub.subs, questId, stepId, questTitle, [...pathTitles, sub.text], dateMatches, wantDone, out);
     }
   }
   /* Einheitliche Aufgaben-Liste: Quest-Blätter (Frist), Quest-Unterschritte (geplant) und Tagesaufgaben.
@@ -699,7 +711,7 @@
         if (s.type !== 'laufend' && !stepHasSubs(s) && s.deadline && s.done === wantDone && dateMatches(s.deadline)) {
           out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: wantDone, refDate: s.deadline });
         }
-        walkSubsMatching(s.subs, q.id, s.id, q.title, s.text, dateMatches, wantDone, out);
+        walkSubsMatching(s.subs, q.id, s.id, q.title, [s.text], dateMatches, wantDone, out);
       }
     }
     for (const a of state.agenda) {
@@ -1435,8 +1447,13 @@
       : `data-kind="agenda" data-id="${t.id}"`;
     // Bei Unterschritt-Aufgaben zusätzlich den Namen des übergeordneten Schrittes zeigen (zum
     // Verständnis, welchem Schritt der Unterschritt zugeordnet ist) — nicht klickbar, reine Info.
-    const stepTag = (t.kind === 'qsub' && t.stepTitle) ? `<span class="dash-tag dash-tag-step" title="Übergeordneter Schritt">${esc(t.stepTitle)}</span>` : '';
-    const questTag = (t.kind === 'qstep' || t.kind === 'qsub') ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '';
+    // Bei Unterschritt-Aufgaben ein Breadcrumb (Quest › Schritt › ggf. verschachtelte
+    // Unterschritt-Vorfahren) statt eines einzelnen Tags — zeigt auf einen Blick, wo genau in
+    // der Struktur diese Aufgabe sitzt, auch bei mehrfach verschachtelten Unterschritten.
+    const crumbPath = [t.questTitle, ...(t.pathTitles || [])].join(' › ');
+    const crumb = t.kind === 'qsub'
+      ? `<button class="dash-crumb" data-action="open-quest-from-cal" data-id="${t.questId}" title="${esc(crumbPath)} — zur Quest">${esc(crumbPath)}</button>`
+      : (t.kind === 'qstep' ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '');
     const overdueTag = t.overdueDays ? `<span class="dash-overdue-tag">seit ${t.overdueDays} ${t.overdueDays === 1 ? 'Tag' : 'Tagen'} überfällig</span>` : '';
     const starAttr = `data-kind="${t.kind}" data-date="${date}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
     const push = taskActions ? `<button class="dash-push" data-action="task-push" ${pushAttr} data-next="${nextDate}" aria-label="Auf nächsten Tag verschieben" title="Auf nächsten Tag verschieben">${ICONS.arrowRight}</button>` : '';
@@ -1456,7 +1473,7 @@
       <div class="row">
         ${control}
         <span class="row-text editable" ${editAttr}>${esc(t.text)}</span>
-        ${stepTag}${questTag}${overdueTag}${push}${del}${star}${arrows}
+        ${crumb}${overdueTag}${push}${del}${star}${arrows}
       </div>
       ${subsList}${subForm}
     </li>`;
@@ -1472,7 +1489,15 @@
      nicht mehr existiert oder inzwischen an einem anderen Tag liegt (z. B. verschoben). */
   function resolveTopTask(ref, dateStr) {
     if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || !topDateMatches(s.deadline, dateStr)) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s), overdueDays: overdueDaysFor(s.deadline, dateStr) }; }
-    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || !topDateMatches(sub.scheduledDate, dateStr)) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, stepTitle: s.text, done: subDone(sub), subs: sub.subs, overdueDays: overdueDaysFor(sub.scheduledDate, dateStr) }; }
+    if (ref.kind === 'qsub') {
+      const q = state.quests.find(q => q.id === ref.questId);
+      const s = q && findStep(q, ref.stepId);
+      const sub = s && findSubRec(s.subs, ref.subId);
+      if (!sub || !topDateMatches(sub.scheduledDate, dateStr)) return null;
+      const ancestors = (s && findSubAncestors(s.subs, ref.subId)) || [];
+      const pathTitles = [s.text, ...ancestors.map(a => a.text)];
+      return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, pathTitles, done: subDone(sub), subs: sub.subs, overdueDays: overdueDaysFor(sub.scheduledDate, dateStr) };
+    }
     if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || !topDateMatches(a.date, dateStr)) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs, overdueDays: overdueDaysFor(a.date, dateStr) }; }
     return null;
   }
