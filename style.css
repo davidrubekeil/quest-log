@@ -1079,8 +1079,10 @@ input { font: inherit; color: inherit; }
 
 .dashboard {
   display: grid;
-  grid-template-columns: minmax(0, 720px) minmax(220px, 340px);
-  gap: 56px;
+  /* Hauptspalte wächst mit dem Fenster (statt bei 720px hart zu deckeln, wodurch übriger
+     Platz bisher ungenutzt rechts verpuffte); Sidebar bleibt in einer festen Spanne. */
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 64px;
   align-items: start;
 }
 .dash-main { min-width: 0; }
@@ -1298,7 +1300,7 @@ input { font: inherit; color: inherit; }
 .dash-crumb {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 260px;
+  max-width: 440px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
