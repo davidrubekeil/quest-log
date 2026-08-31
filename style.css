@@ -678,6 +678,8 @@ input { font: inherit; color: inherit; }
 }
 
 .branch-mark.full { color: var(--accent, var(--ink)); border-color: currentColor; }
+.branch-mark.laufend-toggle { cursor: pointer; transition: border-color 0.12s, color 0.12s; }
+.branch-mark.laufend-toggle:hover { border-color: var(--blue); color: var(--blue); }
 
 .add-sub { list-style: none; }
 .add-row.thin { margin: 2px 0 4px; }
@@ -1290,6 +1292,9 @@ input { font: inherit; color: inherit; }
   transition: color 0.12s, border-color 0.12s;
 }
 .dash-tag:hover { color: var(--ink); border-color: var(--muted); }
+/* Schritt-Kontext bei Unterschritt-Aufgaben: rein informativ, kein Klick-Affordance. */
+.dash-tag-step { border-style: dashed; cursor: default; }
+.dash-tag-step:hover { color: var(--muted); border-color: var(--rule); }
 
 .dash-overdue-tag {
   flex: none;

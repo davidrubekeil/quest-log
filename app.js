@@ -193,7 +193,10 @@
 
   const newStep = text => ({ id: uid(), text, type: 'frist', deadline: null, notes: '', done: false, doneAt: null, subs: [], open: false });
   const stepHasSubs = s => s.subs.length > 0;
-  const stepDone = s => stepHasSubs(s) ? s.subs.every(subDone) : !!s.done;
+  /* Laufender Zweig-Schritt: bleibt aktiv, auch wenn gerade alle Unterschritte abgehakt sind —
+     er endet nur durchs eigene Abhaken oder durch Umstellen auf „Mit Frist" (dann wieder
+     subs-gesteuert). Blätter und Zweige mit Frist bleiben unverändert subs-/eigen-gesteuert. */
+  const stepDone = s => !stepHasSubs(s) ? !!s.done : (s.type === 'laufend' ? !!s.done : s.subs.every(subDone));
   const stepLeaves = s => stepHasSubs(s)
     ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
     : { done: s.done ? 1 : 0, total: 1 };
@@ -229,10 +232,12 @@
     return null;
   }
 
+  /* Quest gilt als erledigt, wenn jeder Schritt erledigt ist (stepDone respektiert dabei die
+     Laufend-Sonderregel: ein laufender Zweig-Schritt zählt erst nach eigenem Abhaken). */
   function syncQuestDone(q) {
-    const { done, total } = questLeaves(q);
-    if (total === 0) return;
-    if (done === total) { if (!q.done) { q.done = true; q.doneAt = nowISO(); } }
+    if (!q.steps.length) return;
+    const allDone = q.steps.every(stepDone);
+    if (allDone) { if (!q.done) { q.done = true; q.doneAt = nowISO(); } }
     else { q.done = false; q.doneAt = null; }
   }
 
@@ -674,12 +679,12 @@
     return out;
   }
 
-  function walkSubsMatching(subs, questId, stepId, questTitle, dateMatches, wantDone, out) {
+  function walkSubsMatching(subs, questId, stepId, questTitle, stepTitle, dateMatches, wantDone, out) {
     for (const sub of subs) {
       if (sub.scheduledDate && subDone(sub) === wantDone && dateMatches(sub.scheduledDate)) {
-        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, done: wantDone, subs: sub.subs, refDate: sub.scheduledDate });
+        out.push({ kind: 'qsub', questId, stepId, subId: sub.id, text: sub.text, questTitle, stepTitle, done: wantDone, subs: sub.subs, refDate: sub.scheduledDate });
       }
-      walkSubsMatching(sub.subs, questId, stepId, questTitle, dateMatches, wantDone, out);
+      walkSubsMatching(sub.subs, questId, stepId, questTitle, stepTitle, dateMatches, wantDone, out);
     }
   }
   /* Einheitliche Aufgaben-Liste: Quest-Blätter (Frist), Quest-Unterschritte (geplant) und Tagesaufgaben.
@@ -694,7 +699,7 @@
         if (s.type !== 'laufend' && !stepHasSubs(s) && s.deadline && s.done === wantDone && dateMatches(s.deadline)) {
           out.push({ kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: wantDone, refDate: s.deadline });
         }
-        walkSubsMatching(s.subs, q.id, s.id, q.title, dateMatches, wantDone, out);
+        walkSubsMatching(s.subs, q.id, s.id, q.title, s.text, dateMatches, wantDone, out);
       }
     }
     for (const a of state.agenda) {
@@ -922,7 +927,9 @@
     const eff = stepEffDeadline(s);
     const du = eff ? daysUntil(eff) : null;
     const control = hasSubs
-      ? `<span class="branch-mark">${sd}/${st}</span>`
+      ? (s.type === 'laufend'
+        ? `<button class="branch-mark laufend-toggle" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Laufenden Schritt beenden" title="Laufenden Schritt beenden — Unterschritte allein reichen dafür nicht">${sd}/${st}</button>`
+        : `<span class="branch-mark">${sd}/${st}</span>`)
       : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const tail = showNext && s.type === 'laufend' ? '<span class="flow-badge">laufend</span>' : (showNext && du !== null ? `<span class="rest${du < 0 ? ' over' : ''}">${fmtRest(du)}</span>` : '');
     const kids = s.subs.filter(sub => !subDone(sub));
@@ -963,7 +970,9 @@
     const kids = s.subs.filter(k => subDone(k) || anyDoneWithin(k));
     const { done: sd, total: st } = stepLeaves(s);
     const control = hasSubs
-      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      ? (s.type === 'laufend' && done
+        ? `<button class="branch-mark full laufend-toggle" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Reaktivieren">${sd}/${st}</button>`
+        : `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`)
       : `<button class="checkbox" data-action="toggle-step" data-quest="${questId}" data-id="${s.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
     return `<li class="node step arch${done ? ' done' : ' context'}">
       <div class="node-row"><span class="node-control">${control}</span><span class="row-text">${esc(s.text)}</span></div>
@@ -1424,6 +1433,9 @@
     const pushAttr = t.kind === 'qstep' ? `data-kind="qstep" data-quest="${t.questId}" data-step="${t.stepId}"`
       : t.kind === 'qsub' ? `data-kind="qsub" data-quest="${t.questId}" data-step="${t.stepId}" data-sub="${t.subId}"`
       : `data-kind="agenda" data-id="${t.id}"`;
+    // Bei Unterschritt-Aufgaben zusätzlich den Namen des übergeordneten Schrittes zeigen (zum
+    // Verständnis, welchem Schritt der Unterschritt zugeordnet ist) — nicht klickbar, reine Info.
+    const stepTag = (t.kind === 'qsub' && t.stepTitle) ? `<span class="dash-tag dash-tag-step" title="Übergeordneter Schritt">${esc(t.stepTitle)}</span>` : '';
     const questTag = (t.kind === 'qstep' || t.kind === 'qsub') ? `<button class="dash-tag" data-action="open-quest-from-cal" data-id="${t.questId}">${esc(t.questTitle)}</button>` : '';
     const overdueTag = t.overdueDays ? `<span class="dash-overdue-tag">seit ${t.overdueDays} ${t.overdueDays === 1 ? 'Tag' : 'Tagen'} überfällig</span>` : '';
     const starAttr = `data-kind="${t.kind}" data-date="${date}"${t.questId ? ` data-quest="${t.questId}"` : ''}${t.stepId ? ` data-step="${t.stepId}"` : ''}${t.subId ? ` data-sub="${t.subId}"` : ''}${t.id ? ` data-id="${t.id}"` : ''}`;
@@ -1444,7 +1456,7 @@
       <div class="row">
         ${control}
         <span class="row-text editable" ${editAttr}>${esc(t.text)}</span>
-        ${questTag}${overdueTag}${push}${del}${star}${arrows}
+        ${stepTag}${questTag}${overdueTag}${push}${del}${star}${arrows}
       </div>
       ${subsList}${subForm}
     </li>`;
@@ -1460,7 +1472,7 @@
      nicht mehr existiert oder inzwischen an einem anderen Tag liegt (z. B. verschoben). */
   function resolveTopTask(ref, dateStr) {
     if (ref.kind === 'qstep') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); if (!s || !topDateMatches(s.deadline, dateStr)) return null; return { kind: 'qstep', questId: q.id, stepId: s.id, text: s.text, questTitle: q.title, done: stepDone(s), overdueDays: overdueDaysFor(s.deadline, dateStr) }; }
-    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || !topDateMatches(sub.scheduledDate, dateStr)) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, done: subDone(sub), subs: sub.subs, overdueDays: overdueDaysFor(sub.scheduledDate, dateStr) }; }
+    if (ref.kind === 'qsub') { const q = state.quests.find(q => q.id === ref.questId); const s = q && findStep(q, ref.stepId); const sub = s && findSubRec(s.subs, ref.subId); if (!sub || !topDateMatches(sub.scheduledDate, dateStr)) return null; return { kind: 'qsub', questId: q.id, stepId: s.id, subId: sub.id, text: sub.text, questTitle: q.title, stepTitle: s.text, done: subDone(sub), subs: sub.subs, overdueDays: overdueDaysFor(sub.scheduledDate, dateStr) }; }
     if (ref.kind === 'agenda') { const a = state.agenda.find(a => a.id === ref.id); if (!a || !topDateMatches(a.date, dateStr)) return null; return { kind: 'agenda', id: a.id, text: a.text, done: a.done, subs: a.subs, overdueDays: overdueDaysFor(a.date, dateStr) }; }
     return null;
   }
@@ -1892,7 +1904,16 @@
       case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }
       case 'toggle-next': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.nextStepId = q.nextStepId === id ? null : id; break; }
 
-      case 'toggle-step': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (!s || stepHasSubs(s)) return; s.done = !s.done; s.doneAt = s.done ? nowISO() : null; if (s.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
+      case 'toggle-step': {
+        const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id);
+        if (!s) return;
+        if (stepHasSubs(s) && s.type !== 'laufend') return; // Zweige mit Frist bleiben rein subs-gesteuert
+        s.done = !s.done; s.doneAt = s.done ? nowISO() : null;
+        if (s.done) touchStreak(q.streak);
+        syncQuestDone(q);
+        if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; }
+        break;
+      }
       case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); removeFromAllTop(taskKey({ kind: 'qstep', questId, stepId: id })); if (id === activeStepId) activeStepId = null; if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
       case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
@@ -1969,7 +1990,7 @@
     if (sel) {
       if (sel.dataset.sel === 'cat') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q && CATS.some(c => c.key === sel.value)) { q.category = sel.value; questCat = sel.value; activeStepId = null; } }
       else if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
-      else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; }
+      else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) { s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
       save(); render(); return;
     }
     const timeInput = e.target.closest('input[type="time"][data-field]');
