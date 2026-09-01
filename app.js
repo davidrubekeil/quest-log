@@ -181,8 +181,11 @@
 
   /* ---------- Unterschritt (rekursiv, simpel) ---------- */
 
-  const newSub = text => ({ id: uid(), text, done: false, doneAt: null, subs: [], open: false, scheduledDate: null });
-  const subDone = s => s.subs.length ? s.subs.every(subDone) : !!s.done;
+  const newSub = text => ({ id: uid(), text, type: 'frist', notes: '', done: false, doneAt: null, subs: [], open: false, scheduledDate: null });
+  /* Laufender Zweig-Unterschritt: bleibt aktiv, auch wenn gerade alle seine eigenen
+     Unterschritte abgehakt sind — endet erst durchs eigene Abhaken oder Umstellen auf
+     „Mit Frist" (dann wieder von seinen Kindern gesteuert). Analog zu stepDone(). */
+  const subDone = s => !s.subs.length ? !!s.done : (s.type === 'laufend' ? !!s.done : s.subs.every(subDone));
   const subLeaves = s => s.subs.length
     ? s.subs.reduce((a, c) => { const r = subLeaves(c); return { done: a.done + r.done, total: a.total + r.total }; }, { done: 0, total: 0 })
     : { done: s.done ? 1 : 0, total: 1 };
@@ -307,7 +310,14 @@
   function normalizeSub(raw) {
     if (typeof raw === 'string') return newSub(raw);
     if (!raw || typeof raw !== 'object') return null;
-    return { id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''), done: !!raw.done, doneAt: raw.doneAt || null, subs: kidsOf(raw).map(normalizeSub).filter(Boolean), open: !!raw.open, scheduledDate: isDateStr(raw.scheduledDate) ? raw.scheduledDate : null };
+    return {
+      id: raw.id || uid(), text: String(raw.text ?? raw.name ?? ''),
+      type: raw.type === 'laufend' ? 'laufend' : 'frist',
+      notes: typeof raw.notes === 'string' ? raw.notes : '',
+      done: !!raw.done, doneAt: raw.doneAt || null,
+      subs: kidsOf(raw).map(normalizeSub).filter(Boolean), open: !!raw.open,
+      scheduledDate: isDateStr(raw.scheduledDate) ? raw.scheduledDate : null,
+    };
   }
   function normalizeStep(raw) {
     if (typeof raw === 'string') return newStep(raw);
@@ -545,7 +555,7 @@
     const n = Array.isArray(parsed.quests) ? parsed.quests.length : 0;
     if (!confirm(`Sicherung importieren? Deine aktuellen Daten in diesem Browser werden vollständig ersetzt (Datei enthält ${n} Quest${n === 1 ? '' : 's'}).`)) return;
     state = sanitizeState(parsed);
-    activeQuestId = null; activeStepId = null; activeEventId = null;
+    activeQuestId = null; activeStepId = null; activeSubId = null; activeEventId = null;
     save();
     backupStatus = 'Sicherung wiederhergestellt ✓';
     render();
@@ -780,6 +790,7 @@
   let questCat = 'main';
   let activeQuestId = null;
   let activeStepId = null;
+  let activeSubId = null;
   let activeEventId = null;
   let stepTab = 'aktuell';
   let dashTab = 'offen';
@@ -894,11 +905,14 @@
   function renderSub(sub, questId, stepId, nextId, showNext) {
     const hasKids = sub.subs.length > 0;
     const done = subDone(sub);
+    const sel = sub.id === activeSubId;
     const isNext = sub.id === nextId;
     const hasNextInside = nextId && !isNext && !!findSubRec(sub.subs, nextId);
     const { done: sd, total: st } = subLeaves(sub);
     const control = hasKids
-      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      ? (sub.type === 'laufend'
+        ? `<button class="branch-mark laufend-toggle" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Laufenden Unterschritt beenden" title="Laufenden Unterschritt beenden — Unterschritte allein reichen dafür nicht">${sd}/${st}</button>`
+        : `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`)
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
     const kids = sub.subs.filter(k => !subDone(k));
     // Jeder Unterschritt lässt sich mit Datum als Tagesaufgabe aufs Dashboard legen (bei Skills nicht).
@@ -914,8 +928,8 @@
           ${sub.scheduledDate ? `<button class="sub-sched-clear" data-action="sub-sched-clear"${dref} aria-label="Planung entfernen" title="Planung entfernen">${ICONS.x}</button>` : ''}
         </span>`
       : '';
-    return `<li class="node sub${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}${sub.scheduledDate ? ' scheduled' : ''}">
-      <div class="node-row">
+    return `<li class="node sub${sel ? ' sel' : ''}${isNext ? ' next' : ''}${hasNextInside ? ' has-next' : ''}${sub.open ? ' open' : ''}${sub.scheduledDate ? ' scheduled' : ''}">
+      <div class="node-row" data-action="select-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">
         <button class="chev" data-action="toggle-sub-open" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Auf-/Zuklappen">${ICONS.chevron}</button>
         <span class="node-control">${control}</span>
         <span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>
@@ -969,7 +983,9 @@
     const kids = sub.subs.filter(k => subDone(k) || anyDoneWithin(k));
     const { done: sd, total: st } = subLeaves(sub);
     const control = hasKids
-      ? `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`
+      ? (sub.type === 'laufend' && done
+        ? `<button class="branch-mark full laufend-toggle" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Reaktivieren">${sd}/${st}</button>`
+        : `<span class="branch-mark${done ? ' full' : ''}">${sd}/${st}</span>`)
       : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Reaktivieren">${ICONS.check}</button>`;
     return `<li class="node sub arch${done ? ' done' : ' context'}">
       <div class="node-row"><span class="node-control">${control}</span><span class="row-text">${esc(sub.text)}</span></div>
@@ -1028,6 +1044,26 @@
   function renderContextCol(q) {
     const skill = isSkill(q);
     const step = activeStepId ? findStep(q, activeStepId) : null;
+    const sub = (step && activeSubId) ? findSubRec(step.subs, activeSubId) : null;
+    if (sub) {
+      if (skill) {
+        return `<div class="col-notes">
+          <div class="col-head">Kontext · Unterschritt<button class="ctx-up" data-action="deselect-sub">↑ Schritt</button></div>
+          <div class="ctx-title">${esc(sub.text)}</div>
+          <div class="ctx-label">Notizen</div>
+          <textarea class="notes" data-sub-notes data-quest="${q.id}" data-step="${step.id}" data-id="${sub.id}" placeholder="Notizen zum Unterschritt …">${esc(sub.notes)}</textarea>
+        </div>`;
+      }
+      return `<div class="col-notes">
+        <div class="col-head">Kontext · Unterschritt<button class="ctx-up" data-action="deselect-sub">↑ Schritt</button></div>
+        <div class="ctx-title">${esc(sub.text)}</div>
+        <div class="meta-row">
+          <label class="sel-field"><span class="sel-label">Typ</span><select data-sel="sub-type" data-quest="${q.id}" data-step="${step.id}" data-id="${sub.id}">${typeOptions(sub.type)}</select></label>
+        </div>
+        <div class="ctx-label">Notizen</div>
+        <textarea class="notes" data-sub-notes data-quest="${q.id}" data-step="${step.id}" data-id="${sub.id}" placeholder="Notizen zum Unterschritt …">${esc(sub.notes)}</textarea>
+      </div>`;
+    }
     if (skill) {
       if (step) {
         return `<div class="col-notes">
@@ -1861,15 +1897,16 @@
   view.addEventListener('keydown', e => { if (!editing) return; if (e.key === 'Enter') { e.preventDefault(); commitEdit(false); } else if (e.key === 'Escape') { e.preventDefault(); commitEdit(true); } });
   view.addEventListener('focusout', e => { if (editing && e.target === editing) commitEdit(false); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !editing) { if (activeStepId) { activeStepId = null; render(); } else if (activeQuestId) { activeQuestId = null; render(); } else if (activeEventId) { activeEventId = null; render(); } }
+    if (e.key === 'Escape' && !editing) { if (activeSubId) { activeSubId = null; render(); } else if (activeStepId) { activeStepId = null; render(); } else if (activeQuestId) { activeQuestId = null; render(); } else if (activeEventId) { activeEventId = null; render(); } }
   });
 
   /* ---------- Notizen (ohne Re-Render) ---------- */
 
   view.addEventListener('input', e => {
-    const ta = e.target.closest('textarea[data-notes], textarea[data-step-notes], textarea[data-ev-notes]');
+    const ta = e.target.closest('textarea[data-notes], textarea[data-step-notes], textarea[data-sub-notes], textarea[data-ev-notes]');
     if (!ta) return;
     if (ta.hasAttribute('data-ev-notes')) { const ev = state.events.find(x => x.id === ta.dataset.id); if (ev) { ev.notes = ta.value; save(); } }
+    else if (ta.hasAttribute('data-sub-notes')) { const q = state.quests.find(q => q.id === ta.dataset.quest); const s = q && findStep(q, ta.dataset.step); const sub = s && findSubRec(s.subs, ta.dataset.id); if (sub) { sub.notes = ta.value; save(); } }
     else if (ta.hasAttribute('data-step-notes')) { const q = state.quests.find(q => q.id === ta.dataset.quest); const s = q && findStep(q, ta.dataset.id); if (s) { s.notes = ta.value; save(); } }
     else { const q = state.quests.find(q => q.id === ta.dataset.id); if (q) { q.notes = ta.value; save(); } }
   });
@@ -1891,7 +1928,7 @@
     if (action === 'export-journal-week-txt') { exportJournalWeekTxt(el.dataset.key); render(); return; }
 
     switch (action) {
-      case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; if (questCat !== 'events') activeEventId = null; break;
+      case 'quest-cat': questCat = el.dataset.cat; activeQuestId = null; activeStepId = null; activeSubId = null; if (questCat !== 'events') activeEventId = null; break;
 
       case 'open-event': if (id !== activeEventId) activeEventId = id; else return; break;
       case 'close-event': activeEventId = null; break;
@@ -1908,15 +1945,15 @@
       }
       case 'idea-up': { swapIdeaEvents(id, -1); break; }
       case 'idea-down': { swapIdeaEvents(id, 1); break; }
-      case 'open-event-cal': { const ev = state.events.find(x => x.id === id); activeTab = 'quests'; questCat = 'events'; eventTab = ev && ev.other ? 'other' : (ev && ev.multiDay ? 'multi' : 'single'); activeEventId = id; activeQuestId = null; activeStepId = null; break; }
+      case 'open-event-cal': { const ev = state.events.find(x => x.id === id); activeTab = 'quests'; questCat = 'events'; eventTab = ev && ev.other ? 'other' : (ev && ev.multiDay ? 'multi' : 'single'); activeEventId = id; activeQuestId = null; activeStepId = null; activeSubId = null; break; }
       case 'open-event-month': { const ev = state.events.find(x => x.id === id); if (!ev) return; activeTab = 'calendar'; calView = 'monat'; calCursor = ev.start; break; }
-      case 'cal-add-event': { const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); const ev = makeEvent('Neues Event', date, false); state.events.push(ev); activeTab = 'quests'; questCat = 'events'; eventTab = 'single'; activeEventId = ev.id; activeQuestId = null; activeStepId = null; pendingEditSel = '.ev-name.editable'; break; }
+      case 'cal-add-event': { const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); const ev = makeEvent('Neues Event', date, false); state.events.push(ev); activeTab = 'quests'; questCat = 'events'; eventTab = 'single'; activeEventId = ev.id; activeQuestId = null; activeStepId = null; activeSubId = null; pendingEditSel = '.ev-name.editable'; break; }
 
-      case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; stepTab = 'aktuell'; } else return; break;
-      case 'close-quest': activeQuestId = null; activeStepId = null; break;
+      case 'open-quest': if (id !== activeQuestId) { activeQuestId = id; activeStepId = null; activeSubId = null; stepTab = 'aktuell'; } else return; break;
+      case 'close-quest': activeQuestId = null; activeStepId = null; activeSubId = null; break;
 
       case 'toggle-quest': { const q = state.quests.find(q => q.id === id); if (!q || q.steps.length) return; q.done = !q.done; q.doneAt = q.done ? nowISO() : null; if (q.done) { touchStreak(q.streak); if (id === activeQuestId) activeQuestId = null; } break; }
-      case 'del-quest': { const q = state.quests.find(q => q.id === id); if (!q || !confirm(`Quest „${q.title}" löschen?`)) return; state.quests = state.quests.filter(x => x.id !== id); if (id === state.focusQuestId) state.focusQuestId = null; if (id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
+      case 'del-quest': { const q = state.quests.find(q => q.id === id); if (!q || !confirm(`Quest „${q.title}" löschen?`)) return; state.quests = state.quests.filter(x => x.id !== id); if (id === state.focusQuestId) state.focusQuestId = null; if (id === activeQuestId) { activeQuestId = null; activeStepId = null; activeSubId = null; } break; }
       case 'reactivate-quest': { const q = state.quests.find(q => q.id === id); if (!q) return; if (q.steps.length) reopenFirstLeaf(q); else { q.done = false; q.doneAt = null; } syncQuestDone(q); break; }
       case 'cycle-prio': { const q = state.quests.find(q => q.id === id); if (!q) return; const i = PRIOS.findIndex(p => p.key === q.priority); q.priority = PRIOS[(i + 1) % PRIOS.length].key; break; }
       case 'toggle-focus': state.focusQuestId = state.focusQuestId === id ? null : id; break;
@@ -1924,8 +1961,10 @@
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
       case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
       case 'archive-tab': archiveTab = ['journal', 'events'].includes(el.dataset.tab) ? el.dataset.tab : 'quests'; break;
-      case 'select-step': { if (id === activeStepId) return; activeStepId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
-      case 'deselect-step': activeStepId = null; break;
+      case 'select-step': { if (id === activeStepId && !activeSubId) return; activeStepId = id; activeSubId = null; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
+      case 'deselect-step': activeStepId = null; activeSubId = null; break;
+      case 'select-sub': { if (id === activeSubId) return; activeStepId = stepId; activeSubId = id; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = true; break; }
+      case 'deselect-sub': activeSubId = null; break;
       case 'toggle-step-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = !s.open; break; }
       case 'toggle-next': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.nextStepId = q.nextStepId === id ? null : id; break; }
 
@@ -1936,13 +1975,22 @@
         s.done = !s.done; s.doneAt = s.done ? nowISO() : null;
         if (s.done) touchStreak(q.streak);
         syncQuestDone(q);
-        if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; }
+        if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; activeSubId = null; }
         break;
       }
-      case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); removeFromAllTop(taskKey({ kind: 'qstep', questId, stepId: id })); if (id === activeStepId) activeStepId = null; if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
+      case 'del-step': { const q = state.quests.find(q => q.id === questId); if (!q) return; q.steps = q.steps.filter(s => s.id !== id); removeFromAllTop(taskKey({ kind: 'qstep', questId, stepId: id })); if (id === activeStepId) { activeStepId = null; activeSubId = null; } if (id === q.nextStepId) q.nextStepId = null; syncQuestDone(q); break; }
       case 'toggle-sub-open': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) sub.open = !sub.open; break; }
-      case 'toggle-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (!sub || sub.subs.length) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; if (sub.done) touchStreak(q.streak); syncQuestDone(q); if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; } break; }
-      case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); syncQuestDone(q); break; }
+      case 'toggle-sub': {
+        const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id);
+        if (!sub) return;
+        if (sub.subs.length && sub.type !== 'laufend') return; // Zweige mit Frist bleiben rein subs-gesteuert
+        sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null;
+        if (sub.done) touchStreak(q.streak);
+        syncQuestDone(q);
+        if (q.done && q.id === activeQuestId) { activeQuestId = null; activeStepId = null; activeSubId = null; }
+        break;
+      }
+      case 'del-sub': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); if (!s) return; removeSubRec(s.subs, id); removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); if (id === activeSubId) activeSubId = null; syncQuestDone(q); break; }
       case 'sub-sched-open': { const inp = el.parentElement.querySelector('.sub-sched-input'); if (inp) { if (typeof inp.showPicker === 'function') { try { inp.showPicker(); } catch (err) { inp.focus(); } } else inp.focus(); } return; }
       case 'sub-sched-clear': { const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId); const sub = s && findSubRec(s.subs, id); if (sub) { removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id })); sub.scheduledDate = null; } break; }
 
@@ -1953,7 +2001,7 @@
       case 'cal-next': calCursor = calView === 'monat' ? addMonths(calCursor, 1) : addDays(calCursor, 1); break;
       case 'cal-today': calCursor = todayStr(); break;
       case 'cal-day': calCursor = el.dataset.date; calView = 'tag'; break;
-      case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; if (q.done) { activeTab = 'archive'; archiveTab = 'quests'; } else { activeTab = 'quests'; questCat = q.category; activeQuestId = q.id; activeStepId = null; stepTab = 'aktuell'; } break; }
+      case 'open-quest-from-cal': { const q = state.quests.find(q => q.id === id); if (!q) return; if (q.done) { activeTab = 'archive'; archiveTab = 'quests'; } else { activeTab = 'quests'; questCat = q.category; activeQuestId = q.id; activeStepId = null; activeSubId = null; stepTab = 'aktuell'; } break; }
       case 'toggle-agenda': { const a = state.agenda.find(a => a.id === id); if (!a) return; a.done = !a.done; a.doneAt = a.done ? nowISO() : null; break; }
       case 'del-agenda': state.agenda = state.agenda.filter(a => a.id !== id); removeFromAllTop(taskKey({ kind: 'agenda', id })); break;
       case 'toggle-agenda-sub': { const a = state.agenda.find(a => a.id === el.dataset.agenda); const sub = a && a.subs.find(s => s.id === id); if (!sub) return; sub.done = !sub.done; sub.doneAt = sub.done ? nowISO() : null; break; }
@@ -2013,9 +2061,10 @@
   view.addEventListener('change', e => {
     const sel = e.target.closest('select[data-sel]');
     if (sel) {
-      if (sel.dataset.sel === 'cat') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q && CATS.some(c => c.key === sel.value)) { q.category = sel.value; questCat = sel.value; activeStepId = null; } }
+      if (sel.dataset.sel === 'cat') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q && CATS.some(c => c.key === sel.value)) { q.category = sel.value; questCat = sel.value; activeStepId = null; activeSubId = null; } }
       else if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
       else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) { s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
+      else if (sel.dataset.sel === 'sub-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.step); const sub = s && findSubRec(s.subs, sel.dataset.id); if (sub) { sub.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
       save(); render(); return;
     }
     const timeInput = e.target.closest('input[type="time"][data-field]');
@@ -2110,7 +2159,7 @@
     save(); render();
   });
 
-  tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; activeEventId = null; render(); });
+  tabbar.addEventListener('click', e => { const btn = e.target.closest('.tab'); if (!btn) return; activeTab = btn.dataset.tab; activeQuestId = null; activeStepId = null; activeSubId = null; activeEventId = null; render(); });
 
   const importInput = document.getElementById('import-file');
   if (importInput) importInput.addEventListener('change', e => {
