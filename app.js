@@ -612,7 +612,7 @@
   const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length || logHasValue(journalLog(d))).sort((a, b) => a < b ? 1 : -1);
 
   /* ---------- Tageswerte (Schlaf/Vitalwerte/Makros) — manuelle Einträge pro Tag, im Journal ---------- */
-  const LOG_FIELDS = ['sleepFrom', 'sleepTo', 'hf', 'hrv', 'kcal', 'carbs', 'protein', 'fett', 'wasser'];
+  const LOG_FIELDS = ['sleepFrom', 'sleepTo', 'sleepQuality', 'hf', 'hrv', 'kcal', 'carbs', 'protein', 'fett', 'wasser', 'screenTime'];
   const LOG_TIME_FIELDS = new Set(['sleepFrom', 'sleepTo']);
   const freshLog = () => Object.fromEntries(LOG_FIELDS.map(k => [k, null]));
   const logHasValue = log => !!log && LOG_FIELDS.some(k => log[k] !== null && log[k] !== undefined);
@@ -623,6 +623,7 @@
       for (const k of LOG_FIELDS) {
         const v = raw[k];
         if (LOG_TIME_FIELDS.has(k)) { if (isTimeStr(v)) log[k] = v; }
+        else if (k === 'sleepQuality') { if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 10) log[k] = v; }
         else if (typeof v === 'number' && Number.isFinite(v) && v >= 0) log[k] = v;
       }
     }
@@ -630,6 +631,7 @@
   }
   function setJournalLog(date, key, v) {
     if (!LOG_FIELDS.includes(key)) return;
+    if (key === 'sleepQuality' && v !== null) v = Math.min(10, Math.max(1, Math.round(v)));
     const day = journalDayRW(date);
     day.log[key] = v;
     journalPrune(date);
@@ -1771,6 +1773,7 @@
   const LOG_NUM_FIELDS = [
     ['hf', 'HF', 'bpm'], ['hrv', 'HRV', 'ms'], ['kcal', 'kcal', 'kcal'],
     ['carbs', 'Carbs', 'g'], ['protein', 'Protein', 'g'], ['fett', 'Fett', 'g'], ['wasser', 'Wasser', 'ml'],
+    ['screenTime', 'Screen Time', 'min'],
   ];
   /* Tageswerte-Feld: Schlaf, Vitalwerte, Makros — manuell pro Tag erfasst, landet im Journal. */
   function renderDayLog(dateStr) {
@@ -1788,6 +1791,11 @@
         <span class="log-sep">–</span>
         <input type="time" data-log="sleepTo" data-date="${dateStr}" value="${log.sleepTo || ''}">
       </div>
+      <div class="log-row">
+        <span class="log-label">Qualität</span>
+        <input type="number" min="1" max="10" inputmode="numeric" data-log="sleepQuality" data-date="${dateStr}" value="${log.sleepQuality ?? ''}" placeholder="—">
+        <span class="log-unit">/10</span>
+      </div>
       ${numRows}
     </div>`;
   }
@@ -1797,6 +1805,7 @@
     const log = journalLog(dateStr);
     const parts = [];
     if (log.sleepFrom || log.sleepTo) parts.push(`Schlaf ${log.sleepFrom || '—'}–${log.sleepTo || '—'}`);
+    if (log.sleepQuality != null) parts.push(`Schlafqualität ${log.sleepQuality}/10`);
     if (log.hf != null) parts.push(`HF ${log.hf} bpm`);
     if (log.hrv != null) parts.push(`HRV ${log.hrv} ms`);
     if (log.kcal != null) parts.push(`${log.kcal} kcal`);
@@ -1804,6 +1813,7 @@
     if (log.protein != null) parts.push(`${log.protein}g Protein`);
     if (log.fett != null) parts.push(`${log.fett}g Fett`);
     if (log.wasser != null) parts.push(`${log.wasser}ml Wasser`);
+    if (log.screenTime != null) parts.push(`${log.screenTime}min Screen Time`);
     const routineChips = routinesDoneOn(dateStr).map(t => `<span class="journal-log-chip routine">✓ ${esc(t)}</span>`).join('');
     const logChips = parts.map(p => `<span class="journal-log-chip">${esc(p)}</span>`).join('');
     return (logChips || routineChips) ? `<div class="journal-log">${logChips}${routineChips}</div>` : '';
@@ -1871,7 +1881,7 @@
       </div>
       <div class="dash-row-bottom">
         <div class="dash-col">${renderDayLog(dateStr)}</div>
-        <div class="dash-col">${isToday ? renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
+        <div class="dash-col">${renderDayNotes(dateStr)}${isToday ? renderStravaBox(dateStr) : ''}</div>
         <div class="dash-col">${isToday ? renderRoutines() : ''}</div>
       </div>
     </div>`;

@@ -1205,21 +1205,21 @@ input { font: inherit; color: inherit; }
 .log-row .log-unit { flex: none; font-size: 10px; color: var(--rule); }
 .log-row .log-sep { flex: none; color: var(--rule); }
 
-/* Strava-Sync am Dashboard */
-.strava-box { margin-bottom: 22px; }
+/* Strava-Sync am Dashboard — am Ende des Journals, nur als orangene Schrift */
+.strava-box { margin-top: 14px; }
 .strava-btn {
-  width: 100%;
-  padding: 8px 12px;
+  padding: 0;
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.04em;
-  color: #fff;
-  background: #E06B3B;
-  border: 1px solid #E06B3B;
+  color: #E06B3B;
+  background: none;
+  border: none;
+  cursor: pointer;
   transition: opacity 0.12s;
 }
-.strava-btn:hover { opacity: 0.88; }
-.strava-btn:disabled { opacity: 0.55; cursor: default; }
+.strava-btn:hover { opacity: 0.7; text-decoration: underline; }
+.strava-btn:disabled { opacity: 0.5; cursor: default; text-decoration: none; }
 .strava-status { margin-top: 6px; font-size: 11px; color: var(--muted); line-height: 1.4; }
 
 /* Gedanken-Feld in der (vergangenen) Tagesansicht */
