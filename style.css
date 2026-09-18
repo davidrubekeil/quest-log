@@ -1077,20 +1077,26 @@ input { font: inherit; color: inherit; }
 
 /* ---------- Tagesstartseite: Productivity-Dashboard ---------- */
 
-.dashboard {
-  display: grid;
-  /* Hauptspalte wächst mit dem Fenster (statt bei 720px hart zu deckeln, wodurch übriger
-     Platz bisher ungenutzt rechts verpuffte); Sidebar bleibt in einer festen Spanne. */
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+.dashboard .day-head { margin-bottom: 14px; }
+
+/* Aufgabenfeld (wächst mit dem Fenster) + Timer daneben, feste Spalte */
+.dash-row-top {
+  display: flex;
   gap: 64px;
   align-items: start;
 }
-.dash-main { min-width: 0; }
-.dashboard .day-head { margin-bottom: 14px; }
+.dash-tasks-col { flex: 1; min-width: 0; }
+.dash-timer-col { flex: none; width: 260px; }
 
-/* Notizfeld (Gedanken) rechts */
-.dash-side { min-width: 0; }
-.dash-scratch { position: sticky; top: 12px; }
+/* Tageswerte / Journal / Routinen — drei gleich breite Spalten darunter */
+.dash-row-bottom {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px;
+  align-items: start;
+  margin-top: 36px;
+}
+.dash-col { min-width: 0; }
 .scratch-list { list-style: none; margin: 4px 0 0; }
 .scratch-item {
   display: flex;
@@ -1166,6 +1172,39 @@ input { font: inherit; color: inherit; }
 .routine-row:hover .routine-period-btn { opacity: 1; }
 .routine-period-btn:hover { border-color: var(--ink); color: var(--ink); }
 
+/* Tageswerte: Schlaf, Vitalwerte, Makros — manuell erfasst */
+.dash-log { margin-bottom: 26px; }
+.log-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hair);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.log-row:last-child { border-bottom: none; }
+.log-row .log-label { flex: none; width: 58px; }
+.log-row input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 2px 2px;
+  color: var(--ink);
+  border-radius: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.log-row input:focus { outline: none; border-bottom-color: var(--ink); }
+.log-row .log-unit { flex: none; font-size: 10px; color: var(--rule); }
+.log-row .log-sep { flex: none; color: var(--rule); }
+
 /* Strava-Sync am Dashboard */
 .strava-box { margin-bottom: 22px; }
 .strava-btn {
@@ -1185,7 +1224,6 @@ input { font: inherit; color: inherit; }
 
 /* Gedanken-Feld in der (vergangenen) Tagesansicht */
 .day-notes-block { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--hair); max-width: 620px; }
-.day-notes-block .dash-scratch { position: static; }
 
 /* Datensicherung im Archiv */
 .backup-bar { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--rule); max-width: 640px; }
@@ -1236,10 +1274,14 @@ input { font: inherit; color: inherit; }
 .journal-day { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--hair); }
 .journal-day:last-child { border-bottom: none; }
 .journal-date { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 8px; }
+.journal-log { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.journal-log-chip { font-family: var(--mono); font-size: 10px; letter-spacing: 0.02em; color: var(--muted); border: 1px solid var(--rule); padding: 2px 7px; }
+.journal-log-chip.routine { color: #E06B3B; border-color: #E06B3B; }
 
 @media (max-width: 900px) {
-  .dashboard { grid-template-columns: minmax(0, 1fr); gap: 28px; }
-  .dash-scratch { position: static; }
+  .dash-row-top { flex-direction: column; gap: 24px; }
+  .dash-timer-col { width: 100%; }
+  .dash-row-bottom { grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 24px; }
 }
 
 .dash-termine { margin-bottom: 18px; }

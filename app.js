@@ -427,8 +427,8 @@
     if (raw.journal && typeof raw.journal === 'object' && !Array.isArray(raw.journal)) {
       for (const [date, day] of Object.entries(raw.journal)) {
         if (!isDateStr(date) || !day || typeof day !== 'object') continue;
-        const notes = cleanNotes(day.notes), activities = cleanActs(day.activities);
-        if (notes.length || activities.length) s.journal[date] = { notes, activities };
+        const notes = cleanNotes(day.notes), activities = cleanActs(day.activities), log = cleanLog(day.log);
+        if (notes.length || activities.length || logHasValue(log)) s.journal[date] = { notes, activities, log };
       }
     }
     // Migration alter globaler „Gedanken" → heutiger Journaltag.
@@ -436,7 +436,7 @@
       const migrated = cleanNotes(raw.scratchpad);
       if (migrated.length) {
         const t = todayStr();
-        const day = s.journal[t] || (s.journal[t] = { notes: [], activities: [] });
+        const day = s.journal[t] || (s.journal[t] = { notes: [], activities: [], log: freshLog() });
         day.notes = day.notes.concat(migrated);
       }
     }
@@ -603,13 +603,38 @@
 
   const journalNotes = date => (state.journal[date] && state.journal[date].notes) || [];
   const journalActs = date => (state.journal[date] && state.journal[date].activities) || [];
-  function journalDayRW(date) { return state.journal[date] || (state.journal[date] = { notes: [], activities: [] }); }
-  function journalPrune(date) { const d = state.journal[date]; if (d && !d.notes.length && !d.activities.length) delete state.journal[date]; }
+  function journalDayRW(date) { return state.journal[date] || (state.journal[date] = { notes: [], activities: [], log: freshLog() }); }
+  function journalPrune(date) { const d = state.journal[date]; if (d && !d.notes.length && !d.activities.length && !logHasValue(d.log)) delete state.journal[date]; }
   function addJournalNote(date, text) { journalDayRW(date).notes.push({ id: uid(), text }); }
   function delJournalNote(date, id) { const d = state.journal[date]; if (!d) return; d.notes = d.notes.filter(n => n.id !== id); journalPrune(date); }
   function editJournalNote(date, id, text) { const n = journalNotes(date).find(n => n.id === id); if (n) n.text = text; }
   /* alle Journaltage mit Inhalt, neueste zuerst */
-  const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length).sort((a, b) => a < b ? 1 : -1);
+  const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length || logHasValue(journalLog(d))).sort((a, b) => a < b ? 1 : -1);
+
+  /* ---------- Tageswerte (Schlaf/Vitalwerte/Makros) — manuelle Einträge pro Tag, im Journal ---------- */
+  const LOG_FIELDS = ['sleepFrom', 'sleepTo', 'hf', 'hrv', 'kcal', 'carbs', 'protein', 'fett', 'wasser'];
+  const LOG_TIME_FIELDS = new Set(['sleepFrom', 'sleepTo']);
+  const freshLog = () => Object.fromEntries(LOG_FIELDS.map(k => [k, null]));
+  const logHasValue = log => !!log && LOG_FIELDS.some(k => log[k] !== null && log[k] !== undefined);
+  const journalLog = date => (state.journal[date] && state.journal[date].log) || freshLog();
+  function cleanLog(raw) {
+    const log = freshLog();
+    if (raw && typeof raw === 'object') {
+      for (const k of LOG_FIELDS) {
+        const v = raw[k];
+        if (LOG_TIME_FIELDS.has(k)) { if (isTimeStr(v)) log[k] = v; }
+        else if (typeof v === 'number' && Number.isFinite(v) && v >= 0) log[k] = v;
+      }
+    }
+    return log;
+  }
+  function setJournalLog(date, key, v) {
+    if (!LOG_FIELDS.includes(key)) return;
+    const day = journalDayRW(date);
+    day.log[key] = v;
+    journalPrune(date);
+  }
+  const routinesDoneOn = dateStr => state.routines.filter(r => routineDoneOn(r, dateStr)).map(r => r.title);
 
   /* ---------- Routinen + Streaks (täglich) ---------- */
 
@@ -1153,6 +1178,7 @@
     const notes = journalNotes(ds).map(n => journalNoteRow(n, ds)).join('');
     return `<div class="journal-day">
       <div class="journal-date">${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}</div>
+      ${renderLogSummary(ds)}
       <ul class="scratch-list">${acts}${notes}</ul>
       ${addMini('add-scratch', 'Neuer Journaleintrag', ` data-date="${ds}"`)}
     </div>`;
@@ -1742,6 +1768,47 @@
     return `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
   }
 
+  const LOG_NUM_FIELDS = [
+    ['hf', 'HF', 'bpm'], ['hrv', 'HRV', 'ms'], ['kcal', 'kcal', 'kcal'],
+    ['carbs', 'Carbs', 'g'], ['protein', 'Protein', 'g'], ['fett', 'Fett', 'g'], ['wasser', 'Wasser', 'ml'],
+  ];
+  /* Tageswerte-Feld: Schlaf, Vitalwerte, Makros — manuell pro Tag erfasst, landet im Journal. */
+  function renderDayLog(dateStr) {
+    const log = journalLog(dateStr);
+    const numRows = LOG_NUM_FIELDS.map(([key, label, unit]) => `<div class="log-row">
+      <span class="log-label">${label}</span>
+      <input type="number" min="0" inputmode="decimal" data-log="${key}" data-date="${dateStr}" value="${log[key] ?? ''}" placeholder="—">
+      <span class="log-unit">${unit}</span>
+    </div>`).join('');
+    return `<div class="dash-log">
+      <div class="dash-label">Tageswerte</div>
+      <div class="log-row sleep-row">
+        <span class="log-label">Schlaf</span>
+        <input type="time" data-log="sleepFrom" data-date="${dateStr}" value="${log.sleepFrom || ''}">
+        <span class="log-sep">–</span>
+        <input type="time" data-log="sleepTo" data-date="${dateStr}" value="${log.sleepTo || ''}">
+      </div>
+      ${numRows}
+    </div>`;
+  }
+
+  /* Kompakte Zusammenfassung der Tageswerte + erledigten Routinen für einen Journal-Archiv-Tag. */
+  function renderLogSummary(dateStr) {
+    const log = journalLog(dateStr);
+    const parts = [];
+    if (log.sleepFrom || log.sleepTo) parts.push(`Schlaf ${log.sleepFrom || '—'}–${log.sleepTo || '—'}`);
+    if (log.hf != null) parts.push(`HF ${log.hf} bpm`);
+    if (log.hrv != null) parts.push(`HRV ${log.hrv} ms`);
+    if (log.kcal != null) parts.push(`${log.kcal} kcal`);
+    if (log.carbs != null) parts.push(`${log.carbs}g Carbs`);
+    if (log.protein != null) parts.push(`${log.protein}g Protein`);
+    if (log.fett != null) parts.push(`${log.fett}g Fett`);
+    if (log.wasser != null) parts.push(`${log.wasser}ml Wasser`);
+    const routineChips = routinesDoneOn(dateStr).map(t => `<span class="journal-log-chip routine">✓ ${esc(t)}</span>`).join('');
+    const logChips = parts.map(p => `<span class="journal-log-chip">${esc(p)}</span>`).join('');
+    return (logChips || routineChips) ? `<div class="journal-log">${logChips}${routineChips}</div>` : '';
+  }
+
   /* Journal-Feld pro Tag (Notizen + automatisch geloggte Strava-Aktivitäten). */
   function renderDayNotes(dateStr) {
     const notes = journalNotes(dateStr).map(n => journalNoteRow(n, dateStr)).join('');
@@ -1791,15 +1858,22 @@
     </div>`;
 
     return `<div class="dashboard">
-      <div class="dash-main">
-        <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
-        ${isToday ? renderQuote() : ''}
-        ${termine}
-        ${topBox}
-        ${overdueBox}
-        ${tasksBox}
+      <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
+      ${isToday ? renderQuote() : ''}
+      <div class="dash-row-top">
+        <div class="dash-tasks-col">
+          ${termine}
+          ${topBox}
+          ${overdueBox}
+          ${tasksBox}
+        </div>
+        ${isToday ? `<div class="dash-timer-col">${renderTimerBox()}</div>` : ''}
       </div>
-      <div class="dash-side">${isToday ? renderTimerBox() + renderRoutines() + renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
+      <div class="dash-row-bottom">
+        <div class="dash-col">${renderDayLog(dateStr)}</div>
+        <div class="dash-col">${isToday ? renderStravaBox(dateStr) : ''}${renderDayNotes(dateStr)}</div>
+        <div class="dash-col">${isToday ? renderRoutines() : ''}</div>
+      </div>
     </div>`;
   }
 
@@ -2065,6 +2139,16 @@
       else if (sel.dataset.sel === 'section' || sel.dataset.sel === 'type') { const q = state.quests.find(q => q.id === sel.dataset.id); if (q) { if (sel.dataset.sel === 'section') q.section = sel.value; else q.type = sel.value === 'laufend' ? 'laufend' : 'frist'; } }
       else if (sel.dataset.sel === 'step-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.id); if (s) { s.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
       else if (sel.dataset.sel === 'sub-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.step); const sub = s && findSubRec(s.subs, sel.dataset.id); if (sub) { sub.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
+      save(); render(); return;
+    }
+    const logInput = e.target.closest('[data-log]');
+    if (logInput) {
+      const date = isDateStr(logInput.dataset.date) ? logInput.dataset.date : todayStr();
+      const raw = logInput.value;
+      const v = logInput.type === 'time'
+        ? (isTimeStr(raw) ? raw : null)
+        : (raw === '' ? null : (Number.isFinite(Number(raw)) ? Number(raw) : null));
+      setJournalLog(date, logInput.dataset.log, v);
       save(); render(); return;
     }
     const timeInput = e.target.closest('input[type="time"][data-field]');
