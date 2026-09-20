@@ -517,6 +517,10 @@
       const d = parseDate(ds);
       const header = `${WD_FULL[wdIndexMon(d)]}, ${d.getDate()}. ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
       lines.push(header, '-'.repeat(header.length));
+      const logParts = logSummaryParts(ds);
+      if (logParts.length) lines.push(`Tageswerte: ${logParts.join(' · ')}`);
+      const doneRoutines = routinesDoneOn(ds);
+      if (doneRoutines.length) lines.push(`Routinen: ${doneRoutines.map(t => '✓ ' + t).join(', ')}`);
       for (const n of journalNotes(ds)) lines.push(`• ${n.text}`);
       for (const a of journalActs(ds)) lines.push(`◆ ${activityPlainLine(a)}`);
       lines.push('');
@@ -635,6 +639,22 @@
     const day = journalDayRW(date);
     day.log[key] = v;
     journalPrune(date);
+  }
+  /* Lesbare Tageswerte-Zeilen (Schlaf, Vitalwerte, Makros) für Archiv-Anzeige + .txt-Export. */
+  function logSummaryParts(dateStr) {
+    const log = journalLog(dateStr);
+    const parts = [];
+    if (log.sleepFrom || log.sleepTo) parts.push(`Schlaf ${log.sleepFrom || '—'}–${log.sleepTo || '—'}`);
+    if (log.sleepQuality != null) parts.push(`Schlafqualität ${log.sleepQuality}/10`);
+    if (log.hf != null) parts.push(`HF ${log.hf} bpm`);
+    if (log.hrv != null) parts.push(`HRV ${log.hrv} ms`);
+    if (log.kcal != null) parts.push(`${log.kcal} kcal`);
+    if (log.carbs != null) parts.push(`${log.carbs}g Carbs`);
+    if (log.protein != null) parts.push(`${log.protein}g Protein`);
+    if (log.fett != null) parts.push(`${log.fett}g Fett`);
+    if (log.wasser != null) parts.push(`${log.wasser}ml Wasser`);
+    if (log.screenTime != null) parts.push(`${log.screenTime}min Screen Time`);
+    return parts;
   }
   const routinesDoneOn = dateStr => state.routines.filter(r => routineDoneOn(r, dateStr)).map(r => r.title);
 
@@ -1802,20 +1822,8 @@
 
   /* Kompakte Zusammenfassung der Tageswerte + erledigten Routinen für einen Journal-Archiv-Tag. */
   function renderLogSummary(dateStr) {
-    const log = journalLog(dateStr);
-    const parts = [];
-    if (log.sleepFrom || log.sleepTo) parts.push(`Schlaf ${log.sleepFrom || '—'}–${log.sleepTo || '—'}`);
-    if (log.sleepQuality != null) parts.push(`Schlafqualität ${log.sleepQuality}/10`);
-    if (log.hf != null) parts.push(`HF ${log.hf} bpm`);
-    if (log.hrv != null) parts.push(`HRV ${log.hrv} ms`);
-    if (log.kcal != null) parts.push(`${log.kcal} kcal`);
-    if (log.carbs != null) parts.push(`${log.carbs}g Carbs`);
-    if (log.protein != null) parts.push(`${log.protein}g Protein`);
-    if (log.fett != null) parts.push(`${log.fett}g Fett`);
-    if (log.wasser != null) parts.push(`${log.wasser}ml Wasser`);
-    if (log.screenTime != null) parts.push(`${log.screenTime}min Screen Time`);
     const routineChips = routinesDoneOn(dateStr).map(t => `<span class="journal-log-chip routine">✓ ${esc(t)}</span>`).join('');
-    const logChips = parts.map(p => `<span class="journal-log-chip">${esc(p)}</span>`).join('');
+    const logChips = logSummaryParts(dateStr).map(p => `<span class="journal-log-chip">${esc(p)}</span>`).join('');
     return (logChips || routineChips) ? `<div class="journal-log">${logChips}${routineChips}</div>` : '';
   }
 
