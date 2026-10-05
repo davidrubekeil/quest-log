@@ -273,7 +273,7 @@
 
   /* ---------- State, Migration ---------- */
 
-  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {}, routines: [] });
+  const emptyState = () => ({ version: 3, lists: [], quests: [], agenda: [], events: [], focusQuestId: null, topTasks: {}, journal: {}, routines: [], profile: { birthYear: null, sex: 'm', weightKg: null } });
 
   /* Routinen sind einer Tageszeit zugeordnet (Morgens/Mittags/Abends). */
   const ROUTINE_PERIODS = [
@@ -451,6 +451,14 @@
     // Routinen: bestehende übernehmen, sonst (nie vorhanden) mit Standard-Routinen starten.
     if (Array.isArray(raw.routines)) s.routines = raw.routines.map(normalizeRoutine).filter(r => r && r.title);
     else s.routines = DEFAULT_ROUTINES.map(normalizeRoutine);
+
+    // Profil für die Level-Berechnung (Character-Reiter): Jahrgang, Geschlecht, Körpergewicht.
+    const rp = (raw.profile && typeof raw.profile === 'object') ? raw.profile : {};
+    s.profile = {
+      birthYear: (Number.isInteger(rp.birthYear) && rp.birthYear > 1920 && rp.birthYear <= new Date().getFullYear()) ? rp.birthYear : null,
+      sex: rp.sex === 'w' ? 'w' : 'm',
+      weightKg: (Number.isFinite(rp.weightKg) && rp.weightKg > 20 && rp.weightKg < 300) ? rp.weightKg : null,
+    };
     return s;
   }
 
@@ -720,14 +728,16 @@
     return false;
   }
   /* geloggte Aktivitäten ins Journal schreiben (dedupliziert) und passende Tagesaufgaben abhaken */
-  function processStravaActivities(activities) {
+  function processStravaActivities(activities, { check = true } = {}) {
     let logged = 0, checked = 0;
     for (const a of (Array.isArray(activities) ? activities : [])) {
       const date = (a.start_date_local || '').slice(0, 10);
       if (!isDateStr(date)) continue;
       const day = journalDayRW(date);
-      if (!day.activities.some(x => x.activityId === String(a.id))) { day.activities.push(stravaToEntry(a)); logged++; }
-      const kws = stravaKeywords(a.type);
+      const existing = day.activities.find(x => x.activityId === String(a.id));
+      if (!existing) { day.activities.push(stravaToEntry(a)); logged++; }
+      else if (!existing.description && typeof a.description === 'string' && a.description) existing.description = a.description; // Hevy-Text nachtragen
+      const kws = check ? stravaKeywords(a.type) : [];
       if (kws.length) {
         for (const t of collectDayTasks(date)) {
           const txt = t.text.toLowerCase();
@@ -2097,6 +2107,202 @@
     return n;
   }
 
+  /* ---------- Level: Kraft (Hevy-Sätze) + Laufform (Age-Grade) — Schätzungen ---------- */
+
+  const LEVEL_DAYS = 84; // „aktueller Stand“ = die letzten 12 Wochen
+  const LEVEL_RANKS = ['Untrainiert', 'Anfänger', 'Novize', 'Mittelstufe', 'Fortgeschritten', 'Elite'];
+  const levelRank = lv => LEVEL_RANKS[Math.min(5, Math.floor(lv / 20))];
+  const normCdf = z => { // Abramowitz-Stegun
+    const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return z > 0 ? 1 - p : p;
+  };
+
+  /* Kraftstandards als Vielfaches des Körpergewichts für das geschätzte 1RM (Männer):
+     Anfänger · Novize · Mittelstufe · Fortgeschritten · Elite. Angelehnt an gängige öffentliche
+     Kraftstandards (Strength Level / ExRx) — grobe Näherung, bei Maschinen/Kabel je nach Gerät
+     sehr unterschiedlich. Kurzhantel-Werte gelten pro Hantel. Die erste passende Zeile gewinnt. */
+  const DB = [.20, .35, .55, .80, 1.05];
+  const LIFT_CATALOG = [
+    ['Enges Bankdrücken', 'Trizeps', /close.?grip bench|jm press/, [.40, .65, 1.0, 1.4, 1.7]],
+    ['Kreuzheben rumänisch', 'Beine', /romanian|stiff.?leg|\brdl\b/, [.75, 1.2, 1.65, 2.2, 2.75]],
+    ['Face Pull / Reverse Fly', 'Schultern', /reverse (pec|fly|flye)|rear delt|face pull/, [.10, .20, .35, .50, .70]],
+    ['Schrägbankdrücken (Langhantel)', 'Brust', /incline.*(barbell|smith)|(barbell|smith).*incline/, [.40, .65, 1.05, 1.5, 1.75]],
+    ['Brustdrücken (Kurzhantel)', 'Brust', /(bench|chest|incline|decline|floor) press.*dumbbell|dumbbell.*(bench|chest|incline|decline|floor) press/, DB],
+    ['Bankdrücken (Langhantel)', 'Brust', /bench press.*(barbell|smith)|(barbell|smith).*bench press|^bench press$/, [.50, .75, 1.25, 1.75, 2.0]],
+    ['Brustpresse (Maschine)', 'Brust', /chest press|iso.?lateral.*(chest|bench)|pec press|(machine).*(bench|chest)/, [.60, 1.0, 1.45, 2.0, 2.5]],
+    ['Fliegende / Cable Fly', 'Brust', /\bfly\b|flye|crossover|pec deck|butterfly/, [.10, .20, .35, .55, .80]],
+    ['Dips', 'Brust', /\bdips?\b/, [1.0, 1.15, 1.4, 1.7, 2.0], true],
+    ['Klimmzug', 'Rücken', /pull.?up|chin.?up/, [1.0, 1.15, 1.35, 1.6, 1.9], true],
+    ['Kreuzheben', 'Rücken', /deadlift/, [1.0, 1.5, 2.0, 2.75, 3.25]],
+    ['Rudern (Langhantel)', 'Rücken', /(bent.?over|pendlay|barbell|t.?bar).*row|row.*(barbell|t.?bar)/, [.45, .70, 1.0, 1.4, 1.75]],
+    ['Rudern (Kurzhantel)', 'Rücken', /(one|single).?arm.*row|row.*dumbbell|dumbbell.*row/, DB],
+    ['Latzug', 'Rücken', /pull.?down|lat pull/, [.50, .75, 1.05, 1.4, 1.8]],
+    ['Rudern (Kabel/Maschine)', 'Rücken', /\brow\b/, [.50, .80, 1.10, 1.5, 1.9]],
+    ['Schulterdrücken (Langhantel)', 'Schultern', /(overhead|military|shoulder) press.*(barbell|smith)|(barbell|smith).*(overhead|military|shoulder) press|^overhead press$/, [.35, .55, .80, 1.10, 1.40]],
+    ['Schulterdrücken (Kurzhantel)', 'Schultern', /(shoulder|overhead).*press.*dumbbell|dumbbell.*(shoulder|overhead) press|arnold/, [.15, .25, .40, .60, .80]],
+    ['Schulterdrücken (Maschine)', 'Schultern', /shoulder press|overhead press/, [.30, .50, .80, 1.15, 1.5]],
+    ['Seitheben', 'Schultern', /lateral raise|side raise/, [.05, .10, .18, .27, .37]],
+    ['Beinbeuger', 'Beine', /leg curl|hamstring curl/, [.25, .45, .70, 1.0, 1.4]],
+    ['Langhantel-Curl', 'Bizeps', /curl.*(barbell|ez)|(barbell|ez).*curl/, [.20, .40, .60, .85, 1.15]],
+    ['Kurzhantel-Curl', 'Bizeps', /curl.*dumbbell|dumbbell.*curl|hammer curl|concentration/, [.10, .20, .32, .45, .60]],
+    ['Curl (Kabel/Maschine)', 'Bizeps', /curl/, [.20, .35, .55, .80, 1.05]],
+    ['Skullcrusher', 'Trizeps', /skull.?crusher|lying triceps/, [.15, .30, .50, .75, 1.0]],
+    ['Trizepsdrücken (Kabel)', 'Trizeps', /push.?down|press.?down/, [.20, .40, .65, 1.0, 1.4]],
+    ['Trizepsstrecken (Überkopf)', 'Trizeps', /triceps extension|overhead triceps/, [.15, .30, .50, .75, 1.0]],
+    ['Frontkniebeuge', 'Beine', /front squat/, [.60, 1.0, 1.3, 1.8, 2.3]],
+    ['Hackenschmidt', 'Beine', /hack squat/, [.75, 1.25, 1.75, 2.5, 3.2]],
+    ['Ausfallschritt / Split Squat', 'Beine', /lunge|split squat|step.?up/, DB],
+    ['Kniebeuge', 'Beine', /squat/, [.75, 1.25, 1.50, 2.25, 2.75]],
+    ['Beinpresse', 'Beine', /leg press/, [1.0, 1.75, 2.75, 3.75, 4.75]],
+    ['Hip Thrust', 'Beine', /hip thrust|glute bridge/, [.50, 1.0, 1.6, 2.3, 3.0]],
+    ['Beinstrecker', 'Beine', /leg extension/, [.30, .55, .90, 1.3, 1.8]],
+    ['Wadenheben', 'Beine', /calf/, [.75, 1.25, 1.75, 2.5, 3.2]],
+  ];
+  const LEVEL_GROUPS = ['Brust', 'Rücken', 'Schultern', 'Bizeps', 'Trizeps', 'Beine'];
+
+  /* Hevy/Strong-Text → [{ name, sets:[{ kg, reps, warm }] }]. Zeilen „Set n: 60 kg x 12 [Warm-up]“ bzw. „Set n: 10 reps“. */
+  function parseWorkout(desc) {
+    const out = []; let cur = null;
+    for (const raw of String(desc || '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line) { cur = null; continue; }
+      const m = line.match(/^Set\s+\d+:\s*(.+)$/i);
+      if (!m) { cur = { name: line, sets: [] }; out.push(cur); continue; }
+      if (!cur) continue;
+      const body = m[1], warm = /\[\s*warm/i.test(body);
+      const kr = body.match(/^([\d.,]+)\s*kg\s*[x×]\s*(\d+)/i), ro = body.match(/^(\d+)\s*reps?\b/i);
+      if (kr) cur.sets.push({ kg: Number(kr[1].replace(',', '.')), reps: Number(kr[2]), warm });
+      else if (ro) cur.sets.push({ kg: null, reps: Number(ro[1]), warm });
+    }
+    return out;
+  }
+  const catalogFor = name => LIFT_CATALOG.find(e => e[2].test(name.toLowerCase()));
+  const epley = (kg, reps) => reps <= 1 ? kg : kg * (1 + reps / 30);
+  /* Stufe 0–100: 20 = Anfänger-Standard, 40 = Novize, 60 = Mittelstufe, 80 = Fortgeschritten, 100 = Elite. */
+  function liftLevel(ratio, std) {
+    if (!(ratio > 0)) return 0;
+    if (ratio < std[0]) return ratio / std[0] * 20;
+    for (let i = 0; i < 4; i++) if (ratio < std[i + 1]) return 20 * (i + 1) + 20 * (ratio - std[i]) / (std[i + 1] - std[i]);
+    return 100;
+  }
+
+  function strengthLevels(profile) {
+    const bw = profile.weightKg, k = profile.sex === 'w' ? 0.65 : 1;
+    const today = todayStr(), start = addDays(today, -(LEVEL_DAYS - 1));
+    const best = new Map(); const unrated = new Set(); let workouts = 0;
+    for (const date of Object.keys(state.journal)) {
+      if (date < start || date > today) continue;
+      for (const a of journalActs(date)) {
+        if (!a.description || !/^Set\s+\d+:/im.test(a.description)) continue;
+        workouts++;
+        for (const ex of parseWorkout(a.description)) {
+          const entry = catalogFor(ex.name);
+          for (const st of ex.sets) {
+            if (st.warm || st.reps < 1 || st.reps > 15) continue;
+            if (!entry) { unrated.add(ex.name.replace(/\s*\(.*\)\s*$/, '')); continue; }
+            let load = st.kg;
+            if (entry[4]) { // Körpergewichtsübung: Zusatzgewicht (bzw. Assistenz) auf das Körpergewicht anrechnen
+              load = /assist/i.test(ex.name) ? bw - (st.kg || 0) : bw + (st.kg || 0);
+              if (load < 0.3 * bw) continue;
+            }
+            if (!(load > 0)) continue;
+            const e1 = epley(load, st.reps);
+            const cur = best.get(entry[0]);
+            if (!cur || e1 > cur.e1rm) best.set(entry[0], { label: entry[0], group: entry[1], e1rm: e1, ratio: e1 / bw, level: liftLevel(e1 / bw, entry[3].map(x => x * k)), sets: `${st.kg != null ? fmtNum(st.kg, st.kg % 1 ? 2 : 0) + ' kg × ' : ''}${st.reps}` });
+          }
+        }
+      }
+    }
+    const groups = LEVEL_GROUPS.map(g => {
+      const lifts = [...best.values()].filter(l => l.group === g).sort((a, b) => b.level - a.level);
+      const top = lifts.slice(0, 2);
+      return { name: g, lifts, level: top.length ? top.reduce((x, l) => x + l.level, 0) / top.length : null };
+    });
+    const rated = groups.filter(g => g.level != null);
+    return { groups, total: rated.length ? rated.reduce((x, g) => x + g.level, 0) / rated.length : null, rated: rated.length, workouts, unrated: [...unrated] };
+  }
+
+  /* Laufform: schnellster Lauf (3–30 km) der letzten 12 Wochen → 5-km-Äquivalent (Riegel) → Age-Grade
+     (WMA-Prinzip) → grober Prozentrang unter Hobbyläufern. Alle Konstanten sind Näherungen. */
+  const ageFactor = age => age < 18 ? 0.93 : age < 22 ? 0.93 + (age - 18) * 0.0175 : age <= 34 ? 1 : Math.max(0.5, 1 - (age - 34) * 0.0085);
+  const fmtClock = sec => { const s = Math.round(sec); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  function runForm(profile) {
+    const today = todayStr(), start = addDays(today, -(LEVEL_DAYS - 1));
+    let best = null;
+    for (const date of Object.keys(state.journal)) {
+      if (date < start || date > today) continue;
+      for (const a of journalActs(date)) {
+        if (!['Run', 'VirtualRun'].includes(a.type) || !(a.distanceKm >= 3 && a.distanceKm <= 30) || !(a.movingMin > 0)) continue;
+        const sec = a.movingMin * 60, eq = sec * Math.pow(5 / a.distanceKm, 1.06);
+        if (!best || eq < best.eq) best = { eq, sec, km: a.distanceKm, date };
+      }
+    }
+    if (!best) return null;
+    const age = new Date().getFullYear() - profile.birthYear, male = profile.sex !== 'w';
+    const ag = (male ? 771 : 859) / (best.eq * ageFactor(age)) * 100; // Open-Standard 5 km (≈ WMA)
+    const percentile = Math.min(99, Math.max(1, Math.round(normCdf((ag - (male ? 50 : 47)) / 10) * 100)));
+    return { ...best, age, ag, percentile };
+  }
+  const RUN_RANKS = [[80, 'Nationalklasse'], [70, 'Regionalklasse'], [60, 'Lokalklasse'], [50, 'Fortgeschritten'], [40, 'Ambitioniert'], [0, 'Einsteiger']];
+
+  function renderLevels() {
+    const pr = state.profile, now = new Date().getFullYear();
+    const sexSel = `<select data-profile="sex"><option value="m"${pr.sex !== 'w' ? ' selected' : ''}>m</option><option value="w"${pr.sex === 'w' ? ' selected' : ''}>w</option></select>`;
+    const form = `<div class="char-profile">
+      <label>Jahrgang <input type="number" min="1920" max="${now}" inputmode="numeric" data-profile="birthYear" value="${pr.birthYear ?? ''}" placeholder="—"></label>
+      <label>Geschlecht ${sexSel}</label>
+      <label>Gewicht <input type="number" min="20" max="300" step="0.1" inputmode="decimal" data-profile="weightKg" value="${pr.weightKg ?? ''}" placeholder="—"> kg</label>
+    </div>`;
+    const connected = !!stravaToken();
+    const backfill = connected ? `<div class="char-backfill"><button class="strava-btn" data-action="strava-backfill"${stravaSyncing ? ' disabled' : ''}>${stravaSyncing ? 'Lade …' : 'Letzte 12 Wochen aus Strava nachladen'}</button>${stravaStatus ? `<span class="strava-status"> ${esc(stravaStatus)}</span>` : ''}</div>` : '';
+    const head = `<div class="char-h">Level<span class="char-h-note">Stand der letzten 12 Wochen · Schätzung</span></div>`;
+
+    let kraft, lauf;
+    if (!pr.weightKg) kraft = '<div class="char-empty wide">— Gewicht im Profil eintragen, dann wird die Kraft bewertet —</div>';
+    else {
+      const sl = strengthLevels(pr);
+      if (!sl.rated) kraft = `<div class="char-empty wide">— ${sl.workouts ? 'keine erkannten Übungen' : 'keine Krafttrainings mit Hevy-Sätzen'} in den letzten 12 Wochen —</div>`;
+      else {
+        const rows = sl.groups.map(g => {
+          if (g.level == null) return `<div class="char-lv-row dim"><span class="char-lv-name">${g.name}</span><span class="char-lv-bar"><i style="width:0"></i></span><span class="char-lv-val">—</span></div>`;
+          const top = g.lifts[0];
+          const all = g.lifts.map(l => `${l.label}: ${l.sets} → ~${fmtNum(l.e1rm, 0)} kg 1RM`).join('\n');
+          return `<div class="char-lv-row" title="${esc(all)}"><span class="char-lv-name">${g.name}</span><span class="char-lv-bar"><i style="width:${Math.min(100, g.level).toFixed(0)}%"></i></span><span class="char-lv-val">Lv ${Math.round(g.level)}</span><span class="char-lv-sub">${levelRank(g.level)} · ${esc(top.label)} ${top.sets}${g.lifts.length > 1 ? ` · +${g.lifts.length - 1}` : ''}</span></div>`;
+        }).join('');
+        kraft = `<div class="char-lv-head"><span class="char-big">Lv ${Math.round(sl.total)}</span><span class="char-unit">${levelRank(sl.total)}</span></div>
+          <div class="char-sub">Ø aus ${sl.rated} von ${LEVEL_GROUPS.length} Muskelgruppen · ${sl.workouts} Krafteinheit${sl.workouts === 1 ? '' : 'en'}</div>
+          ${rows}
+          ${sl.unrated.length ? `<div class="char-note">Nicht bewertet: ${esc(sl.unrated.slice(0, 8).join(', '))}${sl.unrated.length > 8 ? ' …' : ''}</div>` : ''}`;
+      }
+    }
+    if (!pr.birthYear) lauf = '<div class="char-empty wide">— Jahrgang im Profil eintragen, dann wird die Laufform bewertet —</div>';
+    else {
+      const rf = runForm(pr);
+      if (!rf) lauf = '<div class="char-empty wide">— keine Läufe ab 3 km in den letzten 12 Wochen —</div>';
+      else {
+        const rank = RUN_RANKS.find(([min]) => rf.ag >= min)[1];
+        lauf = `<div class="char-lv-head"><span class="char-big">Lv ${Math.round(rf.ag)}</span><span class="char-unit">${rank}</span></div>
+          <div class="char-sub">Age-Grade auf 5 km (Jg. ${pr.birthYear}, ${rf.age} J.)</div>
+          <div class="char-lv-row"><span class="char-lv-name">Form</span><span class="char-lv-bar"><i style="width:${Math.min(100, rf.ag).toFixed(0)}%"></i></span><span class="char-lv-val">${Math.round(rf.ag)} %</span></div>
+          <div class="char-run-facts">
+            <div><span>5-km-Äquivalent</span><b>${fmtClock(rf.eq)}</b></div>
+            <div><span>Schneller als</span><b>≈ ${rf.percentile} % der Läufer</b></div>
+            <div><span>Basis</span><b>${fmtNum(rf.km, 1)} km in ${fmtClock(rf.sec)} · ${shortDate(rf.date)}</b></div>
+          </div>
+          <div class="char-note">Der Vergleich ist eine grobe Schätzung unter Hobbyläufern deiner Altersgruppe.</div>`;
+      }
+    }
+    return `<section class="char-section">${head}
+      <div class="char-level-grid">
+        <div class="char-levelcard"><div class="dash-label">Kraft</div>${kraft}</div>
+        <div class="char-levelcard"><div class="dash-label">Laufform</div>${lauf}</div>
+      </div>
+      ${form}${backfill}
+      <div class="char-note">Level 20 = Anfänger-, 40 = Novize-, 60 = Mittelstufe-, 80 = Fortgeschrittenen-Standard, 100 = Elite. 1RM aus dem besten Satz (Epley), Warm-ups zählen nicht; Maschinen und Kabel sind je nach Gerät nur grob vergleichbar.</div>
+    </section>`;
+  }
+
   function renderCharacter() {
     const weeks = charWeeks(), days = weeks * 7;
     const seg = `<div class="seg">${CHAR_RANGES.map(([k, label]) => `<button data-action="char-range" data-range="${k}" class="${charRange === k ? 'active' : ''}">${label}</button>`).join('')}</div>`;
@@ -2139,6 +2345,7 @@
       <div class="board-title">Character</div>
       ${seg}
       ${attrs}
+      ${renderLevels()}
       <section class="char-section"><div class="char-h">Tageswerte</div><div class="char-grid">${metricCards}</div></section>
       <section class="char-section"><div class="char-h">Training</div>${training}</section>
     </div>`;
@@ -2213,6 +2420,7 @@
     // Strava: eigener async-Ablauf, umgeht das synchrone save()+render() am Ende.
     if (action === 'strava-connect') { window.location.href = '/.netlify/functions/strava-connect'; return; }
     if (action === 'strava-sync') { stravaSync(el.dataset.date); return; }
+    if (action === 'strava-backfill') { stravaBackfill(12); return; }
     if (action === 'export-data') { exportData(); render(); return; }
     if (action === 'import-data') { const inp = document.getElementById('import-file'); if (inp) inp.click(); return; }
     if (action === 'export-journal-txt') { exportJournalTxt(); render(); return; }
@@ -2386,6 +2594,14 @@
       else if (sel.dataset.sel === 'sub-type') { const q = state.quests.find(q => q.id === sel.dataset.quest); const s = q && findStep(q, sel.dataset.step); const sub = s && findSubRec(s.subs, sel.dataset.id); if (sub) { sub.type = sel.value === 'laufend' ? 'laufend' : 'frist'; syncQuestDone(q); } }
       save(); render(); return;
     }
+    const profInput = e.target.closest('[data-profile]');
+    if (profInput) {
+      const k = profInput.dataset.profile, n = Number(String(profInput.value).replace(',', '.'));
+      if (k === 'sex') state.profile.sex = profInput.value === 'w' ? 'w' : 'm';
+      else if (k === 'birthYear') state.profile.birthYear = (Number.isInteger(n) && n > 1920 && n <= new Date().getFullYear()) ? n : null;
+      else if (k === 'weightKg') state.profile.weightKg = (profInput.value !== '' && Number.isFinite(n) && n > 20 && n < 300) ? n : null;
+      save(); render(); return;
+    }
     const logInput = e.target.closest('[data-log]');
     if (logInput) {
       const date = isDateStr(logInput.dataset.date) ? logInput.dataset.date : todayStr();
@@ -2532,6 +2748,38 @@
       }
     } catch (e) {
       stravaStatus = 'Sync-Fehler (offline?).';
+    }
+    stravaSyncing = false; render();
+  }
+
+  /* Letzte Wochen in 3-Wochen-Blöcken nachladen (für das Level: Hevy-Sätze + Läufe). Hakt dabei
+     keine Aufgaben ab und ergänzt fehlende Hevy-Beschreibungen schon geloggter Einheiten. */
+  async function stravaBackfill(weeks) {
+    if (!stravaToken() || stravaSyncing) return;
+    stravaSyncing = true; stravaStatus = ''; render();
+    let logged = 0;
+    try {
+      const end = dayRangeEpoch(todayStr()).before, chunk = 3;
+      for (let w = 0; w < weeks; w += chunk) {
+        const upto = Math.min(weeks, w + chunk);
+        stravaStatus = `Lade Woche ${w + 1}–${upto} von ${weeks} …`; render();
+        const resp = await fetch('/.netlify/functions/strava-sync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: stravaToken(), after: end - upto * 7 * 86400, before: end - w * 7 * 86400 }),
+        });
+        if (!resp.ok) {
+          stravaStatus = resp.status === 401 ? 'Strava-Verbindung abgelaufen – bitte neu verbinden.' : `Nachladen fehlgeschlagen (${resp.status}).`;
+          if (resp.status === 401) setStravaToken(null);
+          stravaSyncing = false; render(); return;
+        }
+        const data = await resp.json();
+        if (data.refresh_token) setStravaToken(data.refresh_token);
+        logged += processStravaActivities(data.activities || [], { check: false }).logged;
+        save();
+      }
+      stravaStatus = `Fertig: ${logged} neue Aktivität${logged === 1 ? '' : 'en'} geladen.`;
+    } catch (e) {
+      stravaStatus = 'Nachladen fehlgeschlagen (offline?).';
     }
     stravaSyncing = false; render();
   }
