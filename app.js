@@ -616,7 +616,7 @@
   const journalDates = () => Object.keys(state.journal).filter(d => journalNotes(d).length || journalActs(d).length || logHasValue(journalLog(d))).sort((a, b) => a < b ? 1 : -1);
 
   /* ---------- Tageswerte (Schlaf/Vitalwerte/Makros) — manuelle Einträge pro Tag, im Journal ---------- */
-  const LOG_FIELDS = ['sleepFrom', 'sleepTo', 'sleepQuality', 'hf', 'hrv', 'kcal', 'carbs', 'protein', 'fett', 'wasser', 'screenTime'];
+  const LOG_FIELDS = ['sleepFrom', 'sleepTo', 'sleepQuality', 'hf', 'hrv', 'kcal', 'carbs', 'protein', 'fett', 'wasser', 'screenTime', 'zufriedenheit'];
   const LOG_TIME_FIELDS = new Set(['sleepFrom', 'sleepTo']);
   const freshLog = () => Object.fromEntries(LOG_FIELDS.map(k => [k, null]));
   const logHasValue = log => !!log && LOG_FIELDS.some(k => log[k] !== null && log[k] !== undefined);
@@ -627,7 +627,7 @@
       for (const k of LOG_FIELDS) {
         const v = raw[k];
         if (LOG_TIME_FIELDS.has(k)) { if (isTimeStr(v)) log[k] = v; }
-        else if (k === 'sleepQuality') { if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 10) log[k] = v; }
+        else if (k === 'sleepQuality' || k === 'zufriedenheit') { if (typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 10) log[k] = v; }
         else if (typeof v === 'number' && Number.isFinite(v) && v >= 0) log[k] = v;
       }
     }
@@ -635,7 +635,7 @@
   }
   function setJournalLog(date, key, v) {
     if (!LOG_FIELDS.includes(key)) return;
-    if (key === 'sleepQuality' && v !== null) v = Math.min(10, Math.max(1, Math.round(v)));
+    if ((key === 'sleepQuality' || key === 'zufriedenheit') && v !== null) v = Math.min(10, Math.max(1, Math.round(v)));
     const day = journalDayRW(date);
     day.log[key] = v;
     journalPrune(date);
@@ -654,6 +654,7 @@
     if (log.fett != null) parts.push(`${log.fett}g Fett`);
     if (log.wasser != null) parts.push(`${log.wasser}ml Wasser`);
     if (log.screenTime != null) parts.push(`${log.screenTime}min Screen Time`);
+    if (log.zufriedenheit != null) parts.push(`Zufriedenheit ${log.zufriedenheit}/10`);
     return parts;
   }
   const routinesDoneOn = dateStr => state.routines.filter(r => routineDoneOn(r, dateStr)).map(r => r.title);
@@ -1790,6 +1791,7 @@
     return `<li class="scratch-item"><span class="scratch-bullet">•</span><span class="row-text editable" data-edit="scratch-text" data-date="${dateStr}" data-id="${n.id}">${esc(n.text)}</span><button class="del" data-action="del-scratch" data-date="${dateStr}" data-id="${n.id}" aria-label="Löschen">${ICONS.x}</button></li>`;
   }
 
+  const MOOD_FACES = ['😫', '😞', '😟', '🙁', '😐', '🙂', '😊', '😄', '😁', '🤩']; // Zufriedenheit 1–10
   const LOG_NUM_FIELDS = [
     ['hf', 'HF', 'bpm'], ['hrv', 'HRV', 'ms'], ['kcal', 'kcal', 'kcal'],
     ['carbs', 'Carbs', 'g'], ['protein', 'Protein', 'g'], ['fett', 'Fett', 'g'], ['wasser', 'Wasser', 'ml'],
@@ -1817,6 +1819,12 @@
         <span class="log-unit">/10</span>
       </div>
       ${numRows}
+      <div class="log-row">
+        <span class="log-label">Zufriedenheit</span>
+        <select data-log="zufriedenheit" data-date="${dateStr}">
+          <option value="">—</option>${MOOD_FACES.map((f, i) => `<option value="${i + 1}"${log.zufriedenheit === i + 1 ? ' selected' : ''}>${f} ${i + 1}</option>`).join('')}
+        </select>
+      </div>
     </div>`;
   }
 

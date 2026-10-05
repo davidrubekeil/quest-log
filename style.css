@@ -1186,7 +1186,7 @@ input { font: inherit; color: inherit; }
   color: var(--muted);
 }
 .log-row:last-child { border-bottom: none; }
-.log-row .log-label { flex: none; width: 58px; }
+.log-row .log-label { flex: none; width: 80px; }
 .log-row input {
   flex: 1;
   min-width: 0;
@@ -1202,6 +1202,21 @@ input { font: inherit; color: inherit; }
   letter-spacing: normal;
 }
 .log-row input:focus { outline: none; border-bottom-color: var(--ink); }
+.log-row select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 2px 0;
+  color: var(--ink);
+  border-radius: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.log-row select:focus { outline: none; border-bottom-color: var(--ink); }
 .log-row .log-unit { flex: none; font-size: 10px; color: var(--rule); }
 .log-row .log-sep { flex: none; color: var(--rule); }
 
