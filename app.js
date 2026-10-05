@@ -200,6 +200,13 @@
     }
     return null;
   }
+  /* Fundort eines Unterschritts: Array, Index und der direkte Eltern-Unterschritt (null = Schritt-Ebene). */
+  function findSubLoc(subs, id, parent = null) {
+    const i = subs.findIndex(s => s.id === id);
+    if (i >= 0) return { arr: subs, index: i, parent };
+    for (const s of subs) { const r = findSubLoc(s.subs, id, s); if (r) return r; }
+    return null;
+  }
   function removeSubRec(subs, id) { const i = subs.findIndex(s => s.id === id); if (i >= 0) { subs.splice(i, 1); return true; } for (const s of subs) if (removeSubRec(s.subs, id)) return true; return false; }
 
   /* ---------- Schritt ---------- */
@@ -1497,14 +1504,15 @@
   /* Unterschritte eines terminierten Schrittes als verschachtelte Teilaufgaben der Tagesaufgabe.
      Erledigte werden ausgeblendet (wie in der Quest-Aktuell-Ansicht); Blätter abhakbar, Zwischen-
      ebenen mit Fortschrittsmarke. Abhaken/Umbenennen/Löschen wirken direkt in die Quest zurück. */
-  function dashSubTree(subs, questId, stepId) {
+  function dashSubTree(subs, questId, stepId, nextDate = null) {
     return subs.filter(s => !subDone(s)).map(sub => {
       const hasKids = sub.subs.length > 0;
       const { done, total } = subLeaves(sub);
       const control = hasKids
         ? `<span class="branch-mark dash-branch">${done}/${total}</span>`
         : `<button class="checkbox" data-action="toggle-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button>`;
-      return `<li class="row">${control}<span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span><button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>${hasKids ? `<ul class="dash-subs">${dashSubTree(sub.subs, questId, stepId)}</ul>` : ''}`;
+      const push = nextDate ? `<button class="dash-push" data-action="sub-push" data-kind="qsub-child" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" data-next="${nextDate}" aria-label="Auf nächsten Tag verschieben" title="Auf nächsten Tag verschieben (mit dupliziertem Eltern-Eintrag)">${ICONS.arrowRight}</button>` : '';
+      return `<li class="row">${control}<span class="row-text editable" data-edit="sub-text" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}">${esc(sub.text)}</span>${push}<button class="del" data-action="del-sub" data-quest="${questId}" data-step="${stepId}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>${hasKids ? `<ul class="dash-subs">${dashSubTree(sub.subs, questId, stepId, nextDate)}</ul>` : ''}`;
     }).join('');
   }
 
@@ -1552,8 +1560,8 @@
       ? addMini('dash-add-agenda-sub', 'Unterschritt', ` data-agenda="${t.id}"`)
       : addMini('dash-add-qsub', 'Unterschritt', ` data-quest="${t.questId}" data-step="${t.stepId}"${t.kind === 'qsub' ? ` data-parent="${t.subId}"` : ''}`);
     const subsList = (t.kind === 'agenda' && t.subs && t.subs.length)
-      ? `<ul class="dash-subs">${t.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span><button class="del" data-action="del-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>`
-      : (isBranch ? `<ul class="dash-subs">${dashSubTree(t.subs, t.questId, t.stepId)}</ul>` : '');
+      ? `<ul class="dash-subs">${t.subs.map(sub => `<li class="row${sub.done ? ' done' : ''}"><button class="checkbox" data-action="toggle-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Abhaken">${ICONS.check}</button><span class="row-text">${esc(sub.text)}</span>${(taskActions && !sub.done) ? `<button class="dash-push" data-action="sub-push" data-kind="agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" data-next="${nextDate}" aria-label="Auf nächsten Tag verschieben" title="Auf nächsten Tag verschieben (mit dupliziertem Eltern-Eintrag)">${ICONS.arrowRight}</button>` : ''}<button class="del" data-action="del-agenda-sub" data-agenda="${t.id}" data-id="${sub.id}" aria-label="Löschen">${ICONS.x}</button></li>`).join('')}</ul>`
+      : (isBranch ? `<ul class="dash-subs">${dashSubTree(t.subs, t.questId, t.stepId, taskActions ? nextDate : null)}</ul>` : '');
     return `<li class="dash-task${t.done ? ' done' : ''}">
       <div class="row">
         ${control}
@@ -2122,6 +2130,33 @@
       }
       case 'topTask-up': { const date = el.dataset.date; const arr = state.topTasks[date]; const i = Number(el.dataset.index); if (!arr || i <= 0) return; [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; break; }
       case 'topTask-down': { const date = el.dataset.date; const arr = state.topTasks[date]; const i = Number(el.dataset.index); if (!arr || i < 0 || i >= arr.length - 1) return; [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; break; }
+      case 'sub-push': {
+        const next = isDateStr(el.dataset.next) ? el.dataset.next : addDays(todayStr(), 1);
+        if (el.dataset.kind === 'agenda-sub') {
+          const a = state.agenda.find(a => a.id === el.dataset.agenda);
+          const sub = a && a.subs.find(s => s.id === id);
+          if (!sub) return;
+          a.subs = a.subs.filter(s => s.id !== id);
+          // Eltern-Aufgabe am Zieltag duplizieren (oder die schon früher duplizierte wiederverwenden).
+          let dup = state.agenda.find(x => x !== a && x.date === next && !x.done && x.text === a.text && x.eventId === a.eventId);
+          if (!dup) { dup = { id: uid(), text: a.text, date: next, done: false, doneAt: null, eventId: a.eventId, subs: [] }; state.agenda.push(dup); }
+          dup.subs.push(sub);
+        } else {
+          const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, stepId);
+          const loc = s && findSubLoc(s.subs, id);
+          const parentLoc = loc && loc.parent && findSubLoc(s.subs, loc.parent.id);
+          if (!parentLoc) return;
+          const parent = loc.parent;
+          const [sub] = loc.arr.splice(loc.index, 1);
+          let dup = parentLoc.arr.find(x => x !== parent && !x.done && x.text === parent.text && x.scheduledDate === next);
+          if (!dup) { dup = newSub(parent.text); dup.scheduledDate = next; dup.open = true; parentLoc.arr.splice(parentLoc.index + 1, 0, dup); }
+          if (sub.scheduledDate && sub.scheduledDate < next) sub.scheduledDate = null; // erscheint nur noch unter dem Duplikat
+          dup.subs.push(sub);
+          removeFromAllTop(taskKey({ kind: 'qsub', questId, stepId, subId: id }));
+          syncQuestDone(q);
+        }
+        break;
+      }
       case 'task-push': {
         const ds = el.dataset;
         const next = isDateStr(ds.next) ? ds.next : addDays(todayStr(), 1);

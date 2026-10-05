@@ -1407,7 +1407,7 @@ input { font: inherit; color: inherit; }
   transition: opacity 0.12s, color 0.12s;
 }
 .dash-push .ico { width: 13px; height: 13px; }
-.dash-task > .row:hover .dash-push { opacity: 0.45; }
+.dash-task > .row:hover .dash-push, .dash-subs .row:hover .dash-push { opacity: 0.45; }
 .dash-push:hover { opacity: 1 !important; color: var(--ink); }
 
 .dash-subs { list-style: none; margin: 2px 0 4px 26px; }
