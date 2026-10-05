@@ -1961,10 +1961,193 @@
     return `${blocks}<form class="add-row add-block" data-action="add-list"><input type="text" placeholder="Neue Liste …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Liste anlegen">${ICONS.plus}</button></form>`;
   }
 
+  /* ---------- Character: Fortschritt der Tageswerte + Trainings ---------- */
+
+  const CHAR_RANGES = [['4', 'Monat', 4], ['13', 'Quartal', 13], ['52', 'Jahr', 52]]; // key, Label, Wochen
+  let charRange = '4';
+  const charWeeks = () => (CHAR_RANGES.find(r => r[0] === charRange) || CHAR_RANGES[0])[2];
+  const fmtNum = (n, dec = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const fmtDur = min => { const m = Math.round(min); const h = Math.floor(m / 60); return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`; };
+  const shortDate = ds => { const d = parseDate(ds); return `${d.getDate()}.${d.getMonth() + 1}.`; };
+  const sleepHours = log => {
+    if (!log || !isTimeStr(log.sleepFrom) || !isTimeStr(log.sleepTo)) return null;
+    const m = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
+    const mins = (m(log.sleepTo) - m(log.sleepFrom) + 1440) % 1440;
+    return mins ? mins / 60 : null;
+  };
+  // better: Richtung, in die der Wert „besser“ wird (nur für die Farbe des Trends); null = neutral.
+  const CHAR_METRICS = [
+    { label: 'Schlafdauer', unit: 'h', dec: 1, better: 'up', get: sleepHours },
+    { label: 'Schlafqualität', unit: '/10', dec: 1, better: 'up', get: l => l.sleepQuality },
+    { label: 'Zufriedenheit', unit: '/10', dec: 1, better: 'up', get: l => l.zufriedenheit },
+    { label: 'Herzfrequenz', unit: 'bpm', dec: 0, better: 'down', get: l => l.hf },
+    { label: 'HRV', unit: 'ms', dec: 0, better: 'up', get: l => l.hrv },
+    { label: 'Kalorien', unit: 'kcal', dec: 0, better: null, get: l => l.kcal },
+    { label: 'Protein', unit: 'g', dec: 0, better: null, get: l => l.protein },
+    { label: 'Carbs', unit: 'g', dec: 0, better: null, get: l => l.carbs },
+    { label: 'Fett', unit: 'g', dec: 0, better: null, get: l => l.fett },
+    { label: 'Wasser', unit: 'ml', dec: 0, better: 'up', get: l => l.wasser },
+    { label: 'Screen Time', unit: 'min', dec: 0, better: 'down', get: l => l.screenTime },
+  ];
+
+  /* Tageswerte als Zeitreihe (älteste → neueste), endend an endDate; v = null an Tagen ohne Wert. */
+  function charSeries(get, days, endDate = todayStr()) {
+    const out = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = addDays(endDate, -i);
+      const day = state.journal[date];
+      const v = day && day.log ? get(day.log) : null;
+      out.push({ date, v: (typeof v === 'number' && Number.isFinite(v)) ? v : null });
+    }
+    return out;
+  }
+  const charAvg = series => { const vals = series.filter(p => p.v != null).map(p => p.v); return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null; };
+
+  /* Verlauf: Punkte = Tageswerte, Linie = gleitender 7-Tage-Schnitt. */
+  function charSpark(series, m) {
+    const pts = series.map((p, i) => ({ ...p, i })).filter(p => p.v != null);
+    if (!pts.length) return '<div class="char-empty">— noch keine Daten —</div>';
+    const W = 240, H = 64, px = 5, py = 7, n = series.length;
+    let lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v));
+    if (hi - lo < 1e-9) { lo -= 1; hi += 1; } else { const pad = (hi - lo) * 0.12; lo -= pad; hi += pad; }
+    const x = i => px + (n === 1 ? 0 : (i / (n - 1)) * (W - 2 * px));
+    const y = v => py + (1 - (v - lo) / (hi - lo)) * (H - 2 * py);
+    let d = '', pen = false;
+    for (let i = 0; i < n; i++) {
+      const win = series.slice(Math.max(0, i - 6), i + 1).filter(p => p.v != null);
+      if (!win.length) { pen = false; continue; }
+      const ma = win.reduce((a, p) => a + p.v, 0) / win.length;
+      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)} ${y(ma).toFixed(1)}`; pen = true;
+    }
+    const r = n > 120 ? 1 : 1.7;
+    const last = pts[pts.length - 1];
+    const dots = pts.map(p => `<circle class="char-dot${p === last ? ' last' : ''}" cx="${x(p.i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${p === last ? r + 0.8 : r}"/>`).join('');
+    const hits = pts.map(p => `<circle class="char-hit" cx="${x(p.i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="5"><title>${shortDate(p.date)}: ${fmtNum(p.v, m.dec)} ${m.unit}</title></circle>`).join('');
+    return `<svg class="char-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf ${esc(m.label)}">${dots}${pts.length > 1 ? `<path class="char-line" d="${d}"/>` : ''}${hits}</svg>`;
+  }
+
+  function charMetricCard(m, days) {
+    const cur = charSeries(m.get, days), prev = charSeries(m.get, days, addDays(todayStr(), -days));
+    const ca = charAvg(cur), pa = charAvg(prev);
+    const count = cur.filter(p => p.v != null).length;
+    let delta = '';
+    if (ca != null && pa != null) {
+      const diff = ca - pa, rounded = Number(diff.toFixed(m.dec));
+      const cls = rounded === 0 || !m.better ? '' : ((diff > 0) === (m.better === 'up') ? ' good' : ' bad');
+      delta = `<span class="char-delta${cls}" title="Vorperiode: Ø ${fmtNum(pa, m.dec)} ${m.unit}">${rounded === 0 ? '±0' : `${diff > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(diff), m.dec)}`}</span>`;
+    }
+    return `<div class="char-card">
+      <div class="dash-label">${m.label}</div>
+      <div class="char-val">${ca != null ? `<span class="char-num">${fmtNum(ca, m.dec)}</span><span class="char-unit">${m.unit}</span>${delta}` : '<span class="char-num dim">—</span>'}</div>
+      <div class="char-sub">${count ? `Ø · ${count} ${count === 1 ? 'Eintrag' : 'Einträge'}` : 'keine Einträge'}</div>
+      ${charSpark(cur, m)}
+    </div>`;
+  }
+
+  /* Säulen pro Woche; Beschriftung nur am Anfang/Ende (Montag der Woche). */
+  function charBars(vals, weekKeys, fmt) {
+    const W = 240, H = 64, base = 50, n = vals.length, slot = (W - 4) / n, bw = Math.max(1.5, slot * 0.68);
+    const max = Math.max(...vals, 0);
+    const bars = vals.map((v, i) => {
+      const h = max > 0 ? Math.max(v > 0 ? 1.5 : 0, (v / max) * (base - 6)) : 0;
+      const bx = 2 + i * slot + (slot - bw) / 2;
+      return `<rect class="char-bar${v > 0 ? '' : ' zero'}" x="${bx.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"><title>Woche ab ${shortDate(weekKeys[i])}: ${fmt(v)}</title></rect><rect class="char-hit" x="${(2 + i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${base}"><title>Woche ab ${shortDate(weekKeys[i])}: ${fmt(v)}</title></rect>`;
+    }).join('');
+    return `<svg class="char-svg" viewBox="0 0 ${W} ${H}" role="img">${bars}<line class="char-axis" x1="0" x2="${W}" y1="${base + 0.5}" y2="${base + 0.5}"/><text class="char-tick" x="2" y="${H - 2}">${shortDate(weekKeys[0])}</text><text class="char-tick" x="${W - 2}" y="${H - 2}" text-anchor="end">${shortDate(weekKeys[n - 1])}</text></svg>`;
+  }
+
+  const ACT_LABELS = { Run: 'Laufen', TrailRun: 'Trailrun', VirtualRun: 'Laufen (virtuell)', Walk: 'Gehen', Hike: 'Wandern', Ride: 'Radfahren', VirtualRide: 'Radfahren (virtuell)', MountainBikeRide: 'Mountainbike', GravelRide: 'Gravel', EBikeRide: 'E-Bike', Swim: 'Schwimmen', WeightTraining: 'Krafttraining', Workout: 'Workout', Crossfit: 'Crossfit', HighIntensityIntervalTraining: 'HIIT', Yoga: 'Yoga' };
+  const actLabel = t => ACT_LABELS[t] || t || 'Sonstiges';
+
+  function charTraining(weeks) {
+    const today = todayStr();
+    const curMon = addDays(today, -wdIndexMon(parseDate(today)));
+    const weekKeys = Array.from({ length: weeks }, (_, i) => addDays(curMon, -7 * (weeks - 1 - i)));
+    const idx = Object.fromEntries(weekKeys.map((k, i) => [k, i]));
+    const t = { weekKeys, sessions: weekKeys.map(() => 0), minutes: weekKeys.map(() => 0), km: weekKeys.map(() => 0), sets: weekKeys.map(() => 0), types: {}, recent: [] };
+    for (const date of Object.keys(state.journal)) {
+      if (date < weekKeys[0] || date > today) continue;
+      const i = idx[addDays(date, -wdIndexMon(parseDate(date)))];
+      for (const a of journalActs(date)) {
+        t.sessions[i]++; t.minutes[i] += a.movingMin || 0; t.km[i] += a.distanceKm || 0;
+        if (isStrengthLike(a.type)) t.sets[i] += countSets(a.description);
+        const ty = t.types[a.type || ''] || (t.types[a.type || ''] = { count: 0, min: 0, km: 0 });
+        ty.count++; ty.min += a.movingMin || 0; ty.km += a.distanceKm || 0;
+        t.recent.push({ date, a });
+      }
+    }
+    t.recent.sort((x, y) => (y.a.at || y.date) < (x.a.at || x.date) ? -1 : 1);
+    return t;
+  }
+
+  function charTrainingCard(label, vals, weekKeys, total, sub, fmt) {
+    return `<div class="char-card training">
+      <div class="dash-label">${label}</div>
+      <div class="char-val"><span class="char-num">${total}</span></div>
+      <div class="char-sub">${sub}</div>
+      ${charBars(vals, weekKeys, fmt)}
+    </div>`;
+  }
+
+  /* Tage in Folge (bis heute bzw. gestern), an denen irgendein Tageswert eingetragen wurde. */
+  function charLogStreak() {
+    const has = ds => !!state.journal[ds] && logHasValue(state.journal[ds].log);
+    let d = has(todayStr()) ? todayStr() : addDays(todayStr(), -1), n = 0;
+    while (has(d)) { n++; d = addDays(d, -1); }
+    return n;
+  }
+
+  function renderCharacter() {
+    const weeks = charWeeks(), days = weeks * 7;
+    const seg = `<div class="seg">${CHAR_RANGES.map(([k, label]) => `<button data-action="char-range" data-range="${k}" class="${charRange === k ? 'active' : ''}">${label}</button>`).join('')}</div>`;
+    const t = charTraining(weeks);
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    const totalSessions = sum(t.sessions), totalMin = sum(t.minutes), totalKm = sum(t.km), totalSets = sum(t.sets);
+    const logged = charSeries(l => (logHasValue(l) ? 1 : null), days).filter(p => p.v != null).length;
+    const tile = (label, value, sub) => `<div class="char-tile"><div class="dash-label">${label}</div><div class="char-big">${value}</div><div class="char-sub">${sub}</div></div>`;
+    const attrs = `<div class="char-attrs">
+      ${tile('Serie', `${charLogStreak()}<span class="char-unit">${charLogStreak() === 1 ? 'Tag' : 'Tage'}</span>`, 'Tageswerte in Folge')}
+      ${tile('Erfasst', `${logged}<span class="char-unit">/ ${days}</span>`, 'Tage mit Tageswerten')}
+      ${tile('Einheiten', String(totalSessions), `Ø ${fmtNum(totalSessions / weeks, 1)} pro Woche`)}
+      ${tile('Trainingszeit', totalMin ? fmtDur(totalMin) : '—', totalMin ? `Ø ${fmtDur(totalMin / weeks)} pro Woche` : 'noch keine Einheiten')}
+    </div>`;
+    const metricCards = CHAR_METRICS.map(m => charMetricCard(m, days)).join('');
+
+    let training;
+    if (!totalSessions) {
+      training = '<div class="char-empty wide">— noch keine Trainings im Zeitraum — (Strava im Kalender-Dashboard synchronisieren)</div>';
+    } else {
+      const cards = [
+        charTrainingCard('Einheiten pro Woche', t.sessions, t.weekKeys, totalSessions, `Ø ${fmtNum(totalSessions / weeks, 1)} pro Woche`, v => `${v} ${v === 1 ? 'Einheit' : 'Einheiten'}`),
+        charTrainingCard('Trainingszeit pro Woche', t.minutes, t.weekKeys, fmtDur(totalMin), `Ø ${fmtDur(totalMin / weeks)} pro Woche`, v => fmtDur(v)),
+      ];
+      if (totalKm > 0) cards.push(charTrainingCard('Distanz pro Woche', t.km, t.weekKeys, `${fmtNum(totalKm, 1)} km`, `Ø ${fmtNum(totalKm / weeks, 1)} km pro Woche`, v => `${fmtNum(v, 1)} km`));
+      if (totalSets > 0) cards.push(charTrainingCard('Sätze pro Woche', t.sets, t.weekKeys, String(totalSets), `Ø ${fmtNum(totalSets / weeks, 1)} pro Woche`, v => `${v} Sätze`));
+      const typeRows = Object.entries(t.types).sort((a, b) => b[1].min - a[1].min).map(([type, v]) => {
+        const share = totalMin > 0 ? Math.max(3, Math.round(v.min / totalMin * 100)) : 0;
+        return `<div class="char-type"><span class="char-type-name">${esc(actLabel(type))}</span><span class="char-type-bar"><i style="width:${share}%"></i></span><span class="char-type-val">${v.count}× · ${fmtDur(v.min)}${v.km > 0 ? ` · ${fmtNum(v.km, 1)} km` : ''}</span></div>`;
+      }).join('');
+      const recent = t.recent.slice(0, 6).map(({ date, a }) => `<li><span class="char-recent-date">${shortDate(date)}</span><span class="char-recent-text">${esc(activityPlainLine(a))}</span></li>`).join('');
+      training = `<div class="char-grid">${cards.join('')}</div>
+        <div class="char-split">
+          <div><div class="dash-label">Nach Art</div>${typeRows}</div>
+          <div><div class="dash-label">Letzte Einheiten</div><ul class="char-recent">${recent}</ul></div>
+        </div>`;
+    }
+
+    return `<div class="char">
+      <div class="board-title">Character</div>
+      ${seg}
+      ${attrs}
+      <section class="char-section"><div class="char-h">Tageswerte</div><div class="char-grid">${metricCards}</div></section>
+      <section class="char-section"><div class="char-h">Training</div>${training}</section>
+    </div>`;
+  }
+
   function render() {
     if (editing) return;
     for (const btn of tabbar.querySelectorAll('.tab')) btn.classList.toggle('active', btn.dataset.tab === activeTab);
-    view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : activeTab === 'archive' ? renderArchiveTab() : renderLists();
+    view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : activeTab === 'archive' ? renderArchiveTab() : activeTab === 'character' ? renderCharacter() : renderLists();
     if (refocusSel) { const el = view.querySelector(refocusSel); if (el) el.focus(); refocusSel = null; }
     if (pendingEditSel) { const el = view.querySelector(pendingEditSel); pendingEditSel = null; if (el) startEdit(el); }
   }
@@ -2068,6 +2251,7 @@
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
       case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
+      case 'char-range': charRange = CHAR_RANGES.some(r => r[0] === el.dataset.range) ? el.dataset.range : '4'; break;
       case 'archive-tab': archiveTab = ['journal', 'events'].includes(el.dataset.tab) ? el.dataset.tab : 'quests'; break;
       case 'select-step': { if (id === activeStepId && !activeSubId) return; activeStepId = id; activeSubId = null; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
       case 'deselect-step': activeStepId = null; activeSubId = null; break;
