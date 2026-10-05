@@ -1512,3 +1512,20 @@ input { font: inherit; color: inherit; }
 .char-profile select { width: 44px; }
 .char-backfill { margin-top: 12px; }
 @media (max-width: 760px) { .char-level-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+
+/* Einklappbare Character-Abschnitte */
+.char-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; flex-wrap: wrap; }
+.char-toggle:hover .char-h-title { opacity: 0.7; }
+.char-toggle .chev { flex: none; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.char-toggle .chev .ico { width: 9px; height: 9px; transform: rotate(-90deg); transition: transform 0.12s; }
+.char-toggle .chev.open .ico { transform: none; }
+.char-h-title { flex: none; }
+.char-section:not(.open) .char-h { margin-bottom: 0; border-bottom-color: var(--hair); }
+.char-section:not(.open) { margin-bottom: 26px; }
+.char-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; margin-left: 14px; font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.char-chip b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.char-chip.dim { opacity: 0.7; }
+.char-chip i { font-style: normal; font-size: 10px; }
+.char-chip i.good { color: var(--flow); }
+.char-chip i.bad { color: var(--red); }
+@media (max-width: 760px) { .char-summary { margin-left: 22px; flex-basis: 100%; } }

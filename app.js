@@ -2036,16 +2036,22 @@
     return `<svg class="char-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf ${esc(m.label)}">${dots}${pts.length > 1 ? `<path class="char-line" d="${d}"/>` : ''}${hits}</svg>`;
   }
 
-  function charMetricCard(m, days) {
+  function charMetricStats(m, days) {
     const cur = charSeries(m.get, days), prev = charSeries(m.get, days, addDays(todayStr(), -days));
     const ca = charAvg(cur), pa = charAvg(prev);
     const count = cur.filter(p => p.v != null).length;
-    let delta = '';
+    let delta = null;
     if (ca != null && pa != null) {
       const diff = ca - pa, rounded = Number(diff.toFixed(m.dec));
       const cls = rounded === 0 || !m.better ? '' : ((diff > 0) === (m.better === 'up') ? ' good' : ' bad');
-      delta = `<span class="char-delta${cls}" title="Vorperiode: Ø ${fmtNum(pa, m.dec)} ${m.unit}">${rounded === 0 ? '±0' : `${diff > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(diff), m.dec)}`}</span>`;
+      delta = { cls, pa, text: rounded === 0 ? '±0' : `${diff > 0 ? '▲' : '▼'} ${fmtNum(Math.abs(diff), m.dec)}`, arrow: rounded === 0 ? '' : (diff > 0 ? '▲' : '▼') };
     }
+    return { cur, ca, count, delta };
+  }
+
+  function charMetricCard(m, days) {
+    const { cur, ca, count, delta: d } = charMetricStats(m, days);
+    const delta = d ? `<span class="char-delta${d.cls}" title="Vorperiode: Ø ${fmtNum(d.pa, m.dec)} ${m.unit}">${d.text}</span>` : '';
     return `<div class="char-card">
       <div class="dash-label">${m.label}</div>
       <div class="char-val">${ca != null ? `<span class="char-num">${fmtNum(ca, m.dec)}</span><span class="char-unit">${m.unit}</span>${delta}` : '<span class="char-num dim">—</span>'}</div>
@@ -2053,6 +2059,19 @@
       ${charSpark(cur, m)}
     </div>`;
   }
+
+  /* Ein-/ausklappbare Abschnitte im Character-Reiter. Offen/zu wird pro Gerät gemerkt (nur Komfort). */
+  const CHAR_OPEN_KEY = 'questlog-char-open';
+  let charOpen = (() => { try { const o = JSON.parse(localStorage.getItem(CHAR_OPEN_KEY) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } })();
+  const saveCharOpen = () => { try { localStorage.setItem(CHAR_OPEN_KEY, JSON.stringify(charOpen)); } catch (e) {} };
+  function charSection(key, title, note, summary, body) {
+    const open = charOpen[key] !== false;
+    return `<section class="char-section${open ? ' open' : ''}">
+      <div class="char-h char-toggle" data-action="char-toggle" data-section="${key}" aria-expanded="${open}"><span class="chev${open ? ' open' : ''}">${ICONS.chevron}</span><span class="char-h-title">${title}</span>${open ? (note ? `<span class="char-h-note">${note}</span>` : '') : `<span class="char-summary">${summary}</span>`}</div>
+      ${open ? body : ''}
+    </section>`;
+  }
+  const chip = (value, label, d) => `<span class="char-chip"><b>${value}</b> ${label}${d && d.arrow ? ` <i class="${d.cls.trim()}">${d.arrow}</i>` : ''}</span>`;
 
   /* Säulen pro Woche; Beschriftung nur am Anfang/Ende (Montag der Woche). */
   function charBars(vals, weekKeys, fmt) {
@@ -2256,14 +2275,13 @@
     </div>`;
     const connected = !!stravaToken();
     const backfill = connected ? `<div class="char-backfill"><button class="strava-btn" data-action="strava-backfill"${stravaSyncing ? ' disabled' : ''}>${stravaSyncing ? 'Lade …' : 'Letzte 12 Wochen aus Strava nachladen'}</button>${stravaStatus ? `<span class="strava-status"> ${esc(stravaStatus)}</span>` : ''}</div>` : '';
-    const head = `<div class="char-h">Level<span class="char-h-note">Stand der letzten 12 Wochen · Schätzung</span></div>`;
-
-    let kraft, lauf;
+    let kraft, lauf, kraftLv = null, laufLv = null;
     if (!pr.weightKg) kraft = '<div class="char-empty wide">— Gewicht im Profil eintragen, dann wird die Kraft bewertet —</div>';
     else {
       const sl = strengthLevels(pr);
       if (!sl.rated) kraft = `<div class="char-empty wide">— ${sl.workouts ? 'keine erkannten Übungen' : 'keine Krafttrainings mit Hevy-Sätzen'} in den letzten 12 Wochen —</div>`;
       else {
+        kraftLv = sl;
         const rows = sl.groups.map(g => {
           if (g.level == null) return `<div class="char-lv-row dim"><span class="char-lv-name">${g.name}</span><span class="char-lv-bar"><i style="width:0"></i></span><span class="char-lv-val">—</span></div>`;
           const top = g.lifts[0];
@@ -2282,6 +2300,7 @@
       if (!rf) lauf = '<div class="char-empty wide">— keine Läufe ab 3 km in den letzten 12 Wochen —</div>';
       else {
         const rank = RUN_RANKS.find(([min]) => rf.ag >= min)[1];
+        laufLv = { rf, rank };
         lauf = `<div class="char-lv-head"><span class="char-big">Lv ${Math.round(rf.ag)}</span><span class="char-unit">${rank}</span></div>
           <div class="char-sub">Age-Grade auf 5 km (Jg. ${pr.birthYear}, ${rf.age} J.)</div>
           <div class="char-lv-row"><span class="char-lv-name">Form</span><span class="char-lv-bar"><i style="width:${Math.min(100, rf.ag).toFixed(0)}%"></i></span><span class="char-lv-val">${Math.round(rf.ag)} %</span></div>
@@ -2293,14 +2312,17 @@
           <div class="char-note">Der Vergleich ist eine grobe Schätzung unter Hobbyläufern deiner Altersgruppe.</div>`;
       }
     }
-    return `<section class="char-section">${head}
-      <div class="char-level-grid">
+    const summary = [
+      kraftLv ? chip(`Lv ${Math.round(kraftLv.total)}`, `Kraft · ${levelRank(kraftLv.total)}`) : '',
+      laufLv ? chip(`Lv ${Math.round(laufLv.rf.ag)}`, `Laufform · ${laufLv.rank}`) : '',
+    ].join('') || '<span class="char-chip dim">noch keine Daten · Profil prüfen</span>';
+    const body = `<div class="char-level-grid">
         <div class="char-levelcard"><div class="dash-label">Kraft</div>${kraft}</div>
         <div class="char-levelcard"><div class="dash-label">Laufform</div>${lauf}</div>
       </div>
       ${form}${backfill}
-      <div class="char-note">Level 20 = Anfänger-, 40 = Novize-, 60 = Mittelstufe-, 80 = Fortgeschrittenen-Standard, 100 = Elite. 1RM aus dem besten Satz (Epley), Warm-ups zählen nicht; Maschinen und Kabel sind je nach Gerät nur grob vergleichbar.</div>
-    </section>`;
+      <div class="char-note">Level 20 = Anfänger-, 40 = Novize-, 60 = Mittelstufe-, 80 = Fortgeschrittenen-Standard, 100 = Elite. 1RM aus dem besten Satz (Epley), Warm-ups zählen nicht; Maschinen und Kabel sind je nach Gerät nur grob vergleichbar.</div>`;
+    return { body, summary };
   }
 
   function renderCharacter() {
@@ -2318,6 +2340,15 @@
       ${tile('Trainingszeit', totalMin ? fmtDur(totalMin) : '—', totalMin ? `Ø ${fmtDur(totalMin / weeks)} pro Woche` : 'noch keine Einheiten')}
     </div>`;
     const metricCards = CHAR_METRICS.map(m => charMetricCard(m, days)).join('');
+    const lv = renderLevels();
+    const pick = ['Schlafdauer', 'HRV', 'Herzfrequenz', 'Zufriedenheit'];
+    const tageswerteSummary = pick.map(label => {
+      const m = CHAR_METRICS.find(x => x.label === label), st = charMetricStats(m, days);
+      return st.ca == null ? '' : chip(`${fmtNum(st.ca, m.dec)}${m.unit === '/10' ? '' : ' ' + m.unit}`, label, st.delta);
+    }).join('') || '<span class="char-chip dim">keine Einträge im Zeitraum</span>';
+    const trainingSummary = totalSessions
+      ? [chip(String(totalSessions), totalSessions === 1 ? 'Einheit' : 'Einheiten'), chip(fmtDur(totalMin), 'Trainingszeit'), totalKm > 0 ? chip(`${fmtNum(totalKm, 0)} km`, 'Distanz') : ''].join('')
+      : '<span class="char-chip dim">noch keine Einheiten im Zeitraum</span>';
 
     let training;
     if (!totalSessions) {
@@ -2345,9 +2376,9 @@
       <div class="board-title">Character</div>
       ${seg}
       ${attrs}
-      ${renderLevels()}
-      <section class="char-section"><div class="char-h">Tageswerte</div><div class="char-grid">${metricCards}</div></section>
-      <section class="char-section"><div class="char-h">Training</div>${training}</section>
+      ${charSection('level', 'Level', 'Stand der letzten 12 Wochen · Schätzung', lv.summary, lv.body)}
+      ${charSection('tageswerte', 'Tageswerte', '', tageswerteSummary, `<div class="char-grid">${metricCards}</div>`)}
+      ${charSection('training', 'Training', '', trainingSummary, training)}
     </div>`;
   }
 
@@ -2459,6 +2490,7 @@
 
       case 'step-tab': stepTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'aktuell'; break;
       case 'dash-tab': dashTab = el.dataset.tab === 'erledigt' ? 'erledigt' : 'offen'; break;
+      case 'char-toggle': { const k = el.dataset.section; charOpen[k] = charOpen[k] === false; saveCharOpen(); break; }
       case 'char-range': charRange = CHAR_RANGES.some(r => r[0] === el.dataset.range) ? el.dataset.range : '4'; break;
       case 'archive-tab': archiveTab = ['journal', 'events'].includes(el.dataset.tab) ? el.dataset.tab : 'quests'; break;
       case 'select-step': { if (id === activeStepId && !activeSubId) return; activeStepId = id; activeSubId = null; const q = state.quests.find(q => q.id === questId); const s = q && findStep(q, id); if (s) s.open = true; break; }
