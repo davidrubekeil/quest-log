@@ -825,7 +825,12 @@
   let dashTab = 'offen';
   let eventTab = 'single';
   let archiveTab = 'quests';
-  let routinesOpen = true;
+  /* Ein-/ausklappbare Dashboard-Blöcke (Tageswerte, Journal, Routinen): offen/zu wird pro Gerät gemerkt. */
+  const DASH_OPEN_KEY = 'questlog-dash-open';
+  let dashOpen = (() => { try { const o = JSON.parse(localStorage.getItem(DASH_OPEN_KEY) || '{}'); return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; } })();
+  const isDashOpen = k => dashOpen[k] !== false;
+  const saveDashOpen = () => { try { localStorage.setItem(DASH_OPEN_KEY, JSON.stringify(dashOpen)); } catch (e) {} };
+  const dashHead = (key, title, count = '') => `<div class="dash-label routines-head" data-action="toggle-dash-section" data-section="${key}"><span class="chev${isDashOpen(key) ? ' open' : ''}">${ICONS.chevron}</span>${title}${count ? `<span class="dash-count">${count}</span>` : ''}</div>`;
   let journalOpenWeeks = null; // lazy: beim ersten Rendern mit der neuesten Woche befüllt
   let stravaSyncing = false;
   let stravaStatus = '';
@@ -1631,8 +1636,8 @@
       </div>`;
     }).join('');
     return `<div class="dash-routines">
-      <div class="dash-label routines-head" data-action="toggle-routines-open"><span class="chev${routinesOpen ? ' open' : ''}">${ICONS.chevron}</span>Routinen${isToday ? '' : ' — nachtragen'}</div>
-      ${routinesOpen ? groups : ''}
+      <div class="dash-label routines-head" data-action="toggle-dash-section" data-section="routines"><span class="chev${isDashOpen('routines') ? ' open' : ''}">${ICONS.chevron}</span>Routinen${isToday ? '' : ' — nachtragen'}</div>
+      ${isDashOpen('routines') ? groups : ''}
     </div>`;
   }
 
@@ -1780,9 +1785,11 @@
       <input type="number" min="0" inputmode="decimal" data-log="${key}" data-date="${dateStr}" value="${log[key] ?? ''}" placeholder="—">
       <span class="log-unit">${unit}</span>
     </div>`).join('');
+    const open = isDashOpen('log');
+    const filled = LOG_FIELDS.filter(k => log[k] !== null && log[k] !== undefined).length;
     return `<div class="dash-log">
-      <div class="dash-label">Tageswerte</div>
-      <div class="log-row sleep-row">
+      ${dashHead('log', 'Tageswerte', `${filled}/${LOG_FIELDS.length}`)}
+      ${open ? `<div class="log-row sleep-row">
         <span class="log-label">Schlaf</span>
         <input type="time" data-log="sleepFrom" data-date="${dateStr}" value="${log.sleepFrom || ''}">
         <span class="log-sep">–</span>
@@ -1799,7 +1806,7 @@
         <select data-log="zufriedenheit" data-date="${dateStr}">
           <option value="">—</option>${MOOD_FACES.map((f, i) => `<option value="${i + 1}"${log.zufriedenheit === i + 1 ? ' selected' : ''}>${f} ${i + 1}</option>`).join('')}
         </select>
-      </div>
+      </div>` : ''}
     </div>`;
   }
 
@@ -1814,10 +1821,11 @@
   function renderDayNotes(dateStr) {
     const notes = journalNotes(dateStr).map(n => journalNoteRow(n, dateStr)).join('');
     const acts = journalActs(dateStr).map(activityLine).join('');
+    const count = journalNotes(dateStr).length + journalActs(dateStr).length;
     return `<div class="dash-scratch">
-      <div class="dash-label">Journal</div>
-      <ul class="scratch-list">${acts}${notes}</ul>
-      <form class="add-row add-scratch" data-action="add-scratch" data-date="${dateStr}"><input type="text" placeholder="Neuer Journaleintrag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>
+      ${dashHead('journal', 'Journal', count ? String(count) : '')}
+      ${isDashOpen('journal') ? `<ul class="scratch-list">${acts}${notes}</ul>
+      <form class="add-row add-scratch" data-action="add-scratch" data-date="${dateStr}"><input type="text" placeholder="Neuer Journaleintrag …" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
     </div>`;
   }
 
@@ -1871,7 +1879,7 @@
       </div>
       <div class="dash-row-bottom">
         <div class="dash-col">${renderDayLog(dateStr)}</div>
-        <div class="dash-col">${renderDayNotes(dateStr)}${isToday ? renderStravaBox(dateStr) : ''}</div>
+        <div class="dash-col">${renderDayNotes(dateStr)}${(isToday && isDashOpen('journal')) ? renderStravaBox(dateStr) : ''}</div>
         <div class="dash-col">${isToday ? renderRoutines() : ''}</div>
       </div>
     </div>`;
@@ -2557,7 +2565,7 @@
       case 'toggle-routine': { const r = state.routines.find(r => r.id === id); const date = isDateStr(el.dataset.date) ? el.dataset.date : todayStr(); if (r) toggleRoutine(r, date); break; }
       case 'del-routine': { const r = state.routines.find(r => r.id === id); if (!r || !confirm(`Routine „${r.title}" löschen? (inkl. Streak)`)) return; state.routines = state.routines.filter(x => x.id !== id); break; }
       case 'cycle-routine-period': { const r = state.routines.find(r => r.id === id); if (!r) return; const i = ROUTINE_PERIODS.findIndex(p => p.key === r.period); r.period = ROUTINE_PERIODS[(i + 1) % ROUTINE_PERIODS.length].key; break; }
-      case 'toggle-routines-open': routinesOpen = !routinesOpen; break;
+      case 'toggle-dash-section': { const k = el.dataset.section; dashOpen[k] = dashOpen[k] === false; saveDashOpen(); break; }
       case 'timer-mode': timerSetMode(el.dataset.mode); break;
       case 'timer-start': timerStart(); break;
       case 'timer-pause': timerPause(); break;
