@@ -1524,3 +1524,41 @@ input { font: inherit; color: inherit; }
 .char-chip i.good { color: var(--flow); }
 .char-chip i.bad { color: var(--red); }
 @media (max-width: 760px) { .char-summary { margin-left: 22px; flex-basis: 100%; } }
+
+/* ---------- Dashboard-Theme: Cyber / Brutalist-RPG (Tagesdashboard + Tagesansicht) ----------
+   Tektur (eckig, techno) für Text/Titel/Labels, VT323 (CRT-Terminal) für Zahlen und Readouts.
+   Beide Schriften liegen lokal in fonts/ (SIL OFL), damit die PWA offline gleich aussieht. */
+@font-face { font-family: 'Tektur'; src: url('fonts/tektur.woff2') format('woff2'); font-weight: 400 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'VT323'; src: url('fonts/vt323-400.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+
+.dashboard, .day-view {
+  --mono: 'VT323', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --grotesk: 'Tektur', -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--grotesk);
+  font-weight: 500;
+  zoom: 1.3;
+}
+.dashboard .day-head, .day-view .day-head { margin-bottom: 18px; padding-bottom: 8px; border-bottom: 3px solid var(--ink); }
+.dashboard .day-title, .day-view .day-title { font-size: 26px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; line-height: 1.15; }
+.dashboard .dash-label, .day-view .dash-label { letter-spacing: 0.14em; }
+.dashboard .dash-label:not(.routines-head)::before, .day-view .dash-label:not(.routines-head)::before { content: "// "; opacity: 0.55; }
+.dashboard .dash-top { background: var(--paper); border: 2px solid var(--ink); box-shadow: 5px 5px 0 var(--ink); margin: 20px 5px 8px 0; }
+.dashboard .dash-timer { padding: 12px 14px 14px; border: 2px solid var(--ink); box-shadow: 5px 5px 0 var(--ink); background: var(--paper); margin: 0 5px 26px 0; }
+.dashboard .timer-display { font-size: 72px; font-weight: 400; line-height: 0.95; letter-spacing: 0.02em; margin: 8px 0 10px; }
+.dashboard .timer-min-input, .dashboard .log-row input, .dashboard .log-row select { font-size: 19px; }
+.dashboard .routine-streak, .dashboard .scratch-time { font-size: 15px; }
+.dashboard .strava-btn { font-size: 16px; }
+.dashboard .row-text, .day-view .row-text { font-size: 14px; }
+
+@media (max-width: 1180px) {
+  .dashboard, .day-view { zoom: 1.15; }
+  .dash-row-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .dashboard, .day-view { zoom: 1.1; }
+  .dash-row-bottom { grid-template-columns: minmax(0, 1fr); }
+  .dashboard .dash-timer { margin-right: 5px; }
+}
+@media (max-width: 600px) {
+  .dashboard .day-title, .day-view .day-title { font-size: 21px; }
+}

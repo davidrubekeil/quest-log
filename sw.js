@@ -1,7 +1,7 @@
 /* Quest-Log — Service Worker
    Cache-first für die App-Shell; bei neuer Version CACHE-Namen hochzählen. */
 
-const CACHE = 'questlog-cache-v66';
+const CACHE = 'questlog-cache-v67';
 
 const ASSETS = [
   './',
@@ -9,6 +9,8 @@ const ASSETS = [
   './style.css',
   './app.js',
   './icons.js',
+  './fonts/tektur.woff2',
+  './fonts/vt323-400.woff2',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
