@@ -121,81 +121,6 @@
   /* Tagesüberschrift ohne Monat/Jahr (die stehen bereits in der Kalender-Kopfzeile). */
   const dayTitle = d => `${WD_FULL[wdIndexMon(d)]}, der ${d.getDate()}.`;
 
-  /* ---------- Zitat des Tages (rotiert deterministisch pro Kalendertag) ---------- */
-
-  const QUOTES = [
-    { t: `Prüfe, ob es die Dinge betrifft, die in unserer eigenen Macht stehen, oder jene, die es nicht tun; und wenn es etwas außerhalb deiner Macht betrifft, sei bereit zu sagen, dass es dich nichts angeht.`, s: `Epiktet, Enchiridion` },
-    { t: `Verlange nicht, dass die Ereignisse so geschehen, wie du es wünschst; sondern wünsche, dass sie so geschehen, wie sie geschehen, und es wird dir gut ergehen.`, s: `Epiktet, Enchiridion` },
-    { t: `Überall zu sein, bedeutet nirgendwo zu sein.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Lass jede Handlung auf ein Ziel gerichtet und in ihrer Art vollkommen sein.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Bedenke bei jeder Angelegenheit, was vorausgeht und was folgt, und dann unternimm sie.`, s: `Epiktet, Enchiridion` },
-    { t: `Wer also frei sein will, der soll nichts wünschen und nichts ablehnen, das von anderen abhängt; andernfalls muss er zwangsläufig ein Sklave sein.`, s: `Epiktet, Enchiridion` },
-    { t: `Was vorbeifliegt, muss ergriffen werden.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Der eigene Geist ist der am meisten von Lärm befreite Ort der Welt, wenn die Gedanken eines Mannes so beschaffen sind, dass sie ihm vollkommene innere Ruhe sichern.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Ein Mensch kann selten unglücklich sein, weil er die Gedanken eines anderen nicht kennt; aber wer nicht auf die Regungen seiner eigenen achtet, ist gewiss unglücklich.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Denke bei jedem Vorfall daran, dich dir selbst zuzuwenden und zu prüfen, welche Fähigkeit du hast, um damit umzugehen.`, s: `Epiktet, Enchiridion` },
-    { t: `Nichts ist unglücklicher als die Neugier des Menschen, der überall umherschweift... aber nicht bedenkt, dass es ausreicht, die Göttlichkeit in sich selbst zu verehren.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Der weise Mann wird diese Dinge ertragen, aber nicht absichtlich die Konfrontation suchen; er wird den Frieden dem Krieg vorziehen.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Eine Veränderung des Charakters, nicht ein Tapetenwechsel, ist das, was du brauchst.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Eine ausgewogene Kombination beider Haltungen ist das, was wir wollen; der aktive Mensch sollte in der Lage sein, die Dinge gelassen zu nehmen, während der zur Ruhe neigende Mensch zum Handeln fähig sein sollte.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Trägt dies zu meinem Charakter bei?`, s: `Via Stoica, What is Eudaimonia?` },
-    { t: `Ein guter Charakter ist die einzige Garantie für ein ewiges, unbeschwertes Glück.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Beginne damit, dir selbst einen Charakter und ein Verhalten vorzuschreiben, das du sowohl allein als auch in Gesellschaft beibehalten kannst.`, s: `Epiktet, Enchiridion` },
-    { t: `Wenn du dich von der Vernunft leiten lässt und das, was vor dir liegt, mit Fleiß, Kraft und Maßhaltung bewältigst... dann wirst du ein glücklicher Mensch sein.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Sei bei nichts, was du tust, widerwillig, egoistisch, unbedacht oder leidenschaftlich.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Ich glaube, dass genauso wie körperliches Training vermeintlich unwillkürliche Muskeln in willkürliche verwandelt, eine ähnliche Transformation durch das Training des Geistes erreicht werden kann.`, s: `Yukio Mishima, Sun and Steel` },
-    { t: `Es bedarf nur eines moderaten Arbeitsaufwands, damit der Geist gedeiht und sich entwickelt. Kultiviere ein Kapital, das die Zeit selbst verbessert.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Nicht derjenige, der zu wenig hat, ist arm, sondern derjenige, der sich nach mehr sehnt.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Wenn du dein Leben nach der Natur gestaltest, wirst du niemals arm sein; wenn nach der Meinung der Menschen, wirst du niemals reich sein.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Wer wenig begehrt, braucht nur wenig. Derjenige hat seinen Wunsch erfüllt, dessen Wunsch es ist, genug zu haben.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Die großartige 'Fähigkeit' des großen Genies, für das selbst ewiges Leiden ein zu geringer Preis ist, ist der strenge Stolz des Künstlers.`, s: `Friedrich Nietzsche, The Birth of Tragedy` },
-    { t: `Erhebt eure Herzen, meine Brüder, hoch, höher! Und vergesst mir auch die Beine nicht! Erhebt auch eure Beine, ihr guten Tänzer, und besser noch: steht auch auf dem Kopf!`, s: `Friedrich Nietzsche, The Birth of Tragedy` },
-    { t: `Denn eine Schwalbe macht noch keinen Sommer, auch nicht ein einziger Tag; und so macht auch ein einziger Tag oder eine kurze Zeit einen Menschen nicht gesegnet und glücklich.`, s: `Aristoteles, Nicomachean Ethics` },
-    { t: `Gestalte alle deine Handlungen, Worte und Gedanken so, als könntest du in jedem Moment aus dem Leben scheiden.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Jeder Tag sollte daher so gestaltet werden, als wäre er derjenige, der das Schlusslicht bildet, der unser Leben abrundet und vollendet.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Derjenige, der dem Morgen ohne Sorge entgegensieht, kennt eine friedliche Unabhängigkeit und ein Glück, das alles andere übertrifft.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Es ist deine Pflicht zu überlegen, wie du das meiste aus deinem Leben machen und das Vorhandene zum größten Vorteil nutzen kannst.`, s: `Platon (zitiert von Marcus Aurelius), Meditationes` },
-    { t: `Was dem Handeln im Weg steht, fördert das Handeln. Was im Weg steht, wird zum Weg.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Wer ein Warum zum Leben hat, erträgt fast jedes Wie.`, s: `Friedrich Nietzsche, Götzen-Dämmerung` },
-    { t: `Nicht weil es schwer ist, wagen wir es nicht, sondern weil wir es nicht wagen, ist es schwer.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Jeder hat einen Plan, bis er eins aufs Maul bekommt.`, s: `Mike Tyson` },
-    { t: `Wie lange willst du noch zögern, dich des Besten für würdig zu halten?`, s: `Epiktet, Enchiridion` },
-    { t: `Das Training von tausend Tagen nennt man Schmieden, das von zehntausend Tagen Polieren.`, s: `Miyamoto Musashi, Das Buch der fünf Ringe` },
-    { t: `Hör auf darüber zu reden, wie ein guter Mensch sein sollte. Sei einer.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Man muss noch Chaos in sich haben, um einen tanzenden Stern gebären zu können.`, s: `Friedrich Nietzsche, Also sprach Zarathustra` },
-    { t: `Feuer prüft das Gold, Unglück den tapferen Mann.`, s: `Seneca, De Providentia` },
-    { t: `Von einem gewissen Punkt an gibt es keine Rückkehr mehr. Dieser Punkt ist zu erreichen.`, s: `Franz Kafka, Zürauer Aphorismen` },
-    { t: `Bald hast du alles vergessen, bald haben alle dich vergessen.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Wenn du Fortschritte machen willst, dann nimm in Kauf, in äußeren Dingen für dumm und einfältig gehalten zu werden.`, s: `Epiktet, Enchiridion` },
-    { t: `Wer mit Ungeheuern kämpft, mag zusehn, dass er nicht dabei zum Ungeheuer wird. Und wenn du lange in einen Abgrund blickst, blickt der Abgrund auch in dich hinein.`, s: `Friedrich Nietzsche, Jenseits von Gut und Böse` },
-    { t: `Wir haben nicht zu wenig Zeit, sondern wir verschwenden zu viel davon.`, s: `Seneca, Von der Kürze des Lebens` },
-    { t: `Disziplin ist Freiheit.`, s: `Jocko Willink, Discipline Equals Freedom` },
-    { t: `Der Charakter des Menschen ist sein Schicksal.`, s: `Heraklit, Fragmente` },
-    { t: `Am Morgen, wenn du nur ungern aufstehst, halte dir vor Augen: Ich erwache, um meine Arbeit als Mensch zu tun.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Was fällt, das soll man auch noch stoßen!`, s: `Friedrich Nietzsche, Also sprach Zarathustra` },
-    { t: `Nichts scheint mir unglücklicher als ein Mensch, dem nie etwas Widriges zugestoßen ist.`, s: `Seneca, De Providentia` },
-    { t: `Die meisten Menschen führen ein Leben in stiller Verzweiflung.`, s: `Henry David Thoreau, Walden` },
-    { t: `Nicht die Dinge selbst beunruhigen die Menschen, sondern ihre Urteile über die Dinge.`, s: `Epiktet, Enchiridion` },
-    { t: `Bereue nichts, was du getan hast.`, s: `Miyamoto Musashi, Dokkōdō` },
-    { t: `Meine Formel für die Größe am Menschen ist amor fati: dass man nichts anders haben will, vorwärts nicht, rückwärts nicht, in alle Ewigkeit nicht.`, s: `Friedrich Nietzsche, Ecce Homo` },
-    { t: `Alexander der Große und sein Maultiertreiber sind im Tod auf dasselbe hinausgekommen.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Wir leiden öfter in der Vorstellung als in der Wirklichkeit.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Der Kampf gegen Gipfel vermag ein Menschenherz auszufüllen. Wir müssen uns Sisyphos als einen glücklichen Menschen vorstellen.`, s: `Albert Camus, Der Mythos des Sisyphos` },
-    { t: `Ein ungeprüftes Leben ist nicht lebenswert.`, s: `Sokrates, in Platons Apologie` },
-    { t: `Werdet hart!`, s: `Friedrich Nietzsche, Also sprach Zarathustra` },
-    { t: `Während man das Leben aufschiebt, eilt es vorüber.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Der Weg des Samurai ist im Tod zu finden.`, s: `Yamamoto Tsunetomo, Hagakure` },
-    { t: `Die beste Art, sich zu rächen, ist, nicht so zu werden wie der, der das Unrecht tat.`, s: `Marcus Aurelius, Meditationes` },
-    { t: `Der Mensch kann zwar tun, was er will, aber er kann nicht wollen, was er will.`, s: `Arthur Schopenhauer, Über die Freiheit des Willens` },
-    { t: `Baut eure Städte an den Vesuv! Schickt eure Schiffe in unerforschte Meere!`, s: `Friedrich Nietzsche, Die fröhliche Wissenschaft` },
-    { t: `Frei ist keiner, der nicht Herr über sich selbst ist.`, s: `Epiktet, Fragmente` },
-    { t: `Mitten im Winter erfuhr ich endlich, dass in mir ein unbesiegbarer Sommer liegt.`, s: `Albert Camus, Heimkehr nach Tipasa` },
-    { t: `Es ist nicht genug zu wissen, man muss auch anwenden; es ist nicht genug zu wollen, man muss auch tun.`, s: `Johann Wolfgang von Goethe, Wilhelm Meisters Wanderjahre` },
-    { t: `Der Mensch ist ein Seil, geknüpft zwischen Tier und Übermensch — ein Seil über einem Abgrunde.`, s: `Friedrich Nietzsche, Also sprach Zarathustra` },
-    { t: `Solange du lebst, lerne, wie man lebt.`, s: `Seneca, Letters from a Stoic` },
-    { t: `Was sagt dein Gewissen? — „Du sollst der werden, der du bist."`, s: `Friedrich Nietzsche, Die fröhliche Wissenschaft` },
-  ];
-
   /* ---------- Streak (intern) ---------- */
 
   const freshStreak = () => ({ currentStreak: 0, longestStreak: 0, lastActiveDate: null });
@@ -1663,13 +1588,6 @@
     return `<li class="scratch-item activity"><span class="scratch-bullet">◆</span><span class="row-text">${timeTag}<strong>${label}</strong>${parts.length ? ` · ${parts.join(' · ')}` : ''}${desc}</span></li>`;
   }
 
-  /* Zitat des Tages — deterministisch pro Kalendertag, rotiert durch alle Zitate. */
-  function renderQuote() {
-    if (typeof QUOTES === 'undefined' || !QUOTES.length) return '';
-    const dayNum = Math.floor(parseDate(todayStr()).getTime() / 86400000);
-    const q = QUOTES[((dayNum % QUOTES.length) + QUOTES.length) % QUOTES.length];
-    return `<div class="dash-quote"><div class="quote-text">${esc(q.t)}</div>${q.s ? `<div class="quote-src">— ${esc(q.s)}</div>` : ''}</div>`;
-  }
 
   /* Routinen mit Streak. Heute: volle Verwaltung inkl. Umsortieren. Vergangene Tage: nur
      nachträgliches Abhaken (Streak-Backfill), ohne Umbenennen/Löschen/Neu/Umsortieren. */
@@ -1942,7 +1860,6 @@
 
     return `<div class="dashboard">
       <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
-      ${isToday ? renderQuote() : ''}
       <div class="dash-row-top">
         <div class="dash-tasks-col">
           ${termine}
