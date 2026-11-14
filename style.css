@@ -11,12 +11,12 @@
   --rule:  #E8DEDC;                    /* Hairline, moderater Rotstich */
   --hair:  rgba(80, 30, 26, 0.05);
   --muted: #948B87;
-  --red:   #A6352A;
+  --red:   #D52B1E;                    /* Signalrot, einzige Akzentfarbe */
   --blue:  #3D5A73;
   --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --grotesk: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --grotesk: ui-monospace, "SF Mono", Menlo, Consolas, monospace; /* eine Schrift für alles */
 }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -1525,93 +1525,80 @@ input { font: inherit; color: inherit; }
 .char-chip i.bad { color: var(--red); }
 @media (max-width: 760px) { .char-summary { margin-left: 22px; flex-basis: 100%; } }
 
-/* ---------- Dashboard-Theme: Swiss Style, plakativ (Tagesdashboard + Tagesansicht) ----------
-   Schweizer Typografie auf einem sichtbaren Dreispalten-Raster: blockige Grotesk (Inter Tight,
-   lokal in fonts/, SIL OFL), Titel und Überschriften in Versalien, jedes Modul hängt an einem
-   schwarzen Balken; innen nur Haarlinien. Alle Texte fluchten an der linken Spaltenkante. */
-@font-face { font-family: 'Inter Tight'; src: url('fonts/inter-tight.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
+/* ---------- Dashboard-Theme (Tagesdashboard + Tagesansicht) ----------
+   Swiss Style in Mono: Dreispalten-Raster (oben 2 + 1, unten 1 + 1 + 1), jedes Modul hängt an
+   einer feinen schwarzen Linie, sonst keine Trenner. Hierarchie über Größe, Gewicht, Versalien. */
+.dashboard, .day-view { --gut: 40px; font-variant-numeric: tabular-nums; }
+.dashboard .day-head, .day-view .day-head { margin: 4px 0 26px; padding: 0; border: none; }
+.dashboard .day-title, .day-view .day-title { display: block; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-transform: uppercase; }
 
-.dashboard, .day-view {
-  --grotesk: 'Inter Tight', "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --mono: 'Inter Tight', "Helvetica Neue", Helvetica, Arial, sans-serif; /* auch Eingabefelder und Zahlen */
-  --red: #D52B1E; /* Signalrot als einzige Akzentfarbe im Dashboard */
-  --gut: 40px;  /* Spaltenabstand */
-  --bar: 5px;   /* Modulbalken */
-  font-family: var(--grotesk);
-  font-variant-numeric: tabular-nums;
-  zoom: 1.12;
-}
-
-/* Titel: groß, schwarz, Versalien — ohne eigene Linie (die Modulbalken darunter bilden das Raster) */
-.dashboard .day-head, .day-view .day-head { margin: 4px 0 28px; padding: 0; border: none; }
-.dashboard .day-title, .day-view .day-title { display: block; font-size: 46px; font-weight: 900; letter-spacing: -0.025em; line-height: 0.95; text-transform: uppercase; }
-
-/* Raster: oben 2 + 1 Spalten, unten 1 + 1 + 1 — gleiche Spaltenkanten in beiden Reihen */
 .dashboard .dash-row-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gut); align-items: start; }
 .dashboard .dash-tasks-col { grid-column: span 2; }
 .dashboard .dash-timer-col { width: auto; }
-.dashboard .dash-row-bottom { gap: var(--gut); margin-top: 44px; }
+.dashboard .dash-row-bottom { gap: var(--gut); margin-top: 40px; }
 
-/* Module: schwarzer Balken oben, darunter Überschrift */
 .dashboard .dash-tasks-col, .dashboard .dash-timer, .dashboard .dash-col:not(:empty),
-.day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch {
-  border-top: var(--bar) solid var(--ink); padding-top: 12px;
-}
+.day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch { border-top: 1px solid var(--ink); padding-top: 12px; }
 .dashboard .dash-top, .dashboard .dash-timer, .dashboard .dash-log, .dashboard .dash-scratch, .dashboard .dash-routines { background: none; margin: 0; }
 .dashboard .dash-top, .dashboard .dash-log, .dashboard .dash-scratch, .dashboard .dash-routines { border: none; padding: 0; }
 .dashboard .dash-tasks-col > :first-child { margin-top: 0; }
-/* Unterteilungen innerhalb eines Moduls: feine schwarze Linie */
-.dashboard .dash-tasks { margin-top: 22px; padding-top: 12px; border-top: 1px solid var(--ink); }
-.dashboard .dash-overdue { margin-top: 22px; padding: 12px 0 0; border: none; border-top: 1px solid var(--red); }
+.dashboard .dash-tasks { margin-top: 26px; }
+.dashboard .dash-overdue { margin-top: 26px; padding: 0; border: none; }
 .day-view .day-notes-block { border-top: none; padding-top: 0; }
 .day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch { margin: 28px 0 0; }
 
-/* Überschriften und Reiter: Versalien, fett, minimal gesperrt */
-.dashboard .dash-label, .day-view .dash-label,
-.dashboard .step-tabs button, .dashboard .timer-btn,
-.day-view .day-group-label,
-.dashboard .routine-group-label, .day-view .routine-group-label {
-  font-size: 12px; font-weight: 800; letter-spacing: 0.035em; text-transform: uppercase;
-}
-.dashboard .dash-label, .day-view .dash-label, .day-view .day-group-label { color: var(--ink); }
-.dashboard .dash-label, .day-view .dash-label { margin-bottom: 12px; }
+.dashboard .dash-label, .day-view .dash-label, .dashboard .step-tabs button, .day-view .day-group-label,
+.dashboard .routine-group-label, .day-view .routine-group-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.dashboard .dash-label, .day-view .dash-label, .day-view .day-group-label { color: var(--ink); margin-bottom: 12px; }
 .dashboard .dash-label.warn { color: var(--red); }
 .dashboard .dash-hint { font-weight: 400; letter-spacing: 0; text-transform: none; }
 .dashboard .routine-group-label, .day-view .routine-group-label { font-size: 10px; color: var(--muted); }
-.dashboard .step-tabs { gap: 22px; }
-.dashboard .step-tabs button { padding: 2px 0 8px; color: var(--muted); }
+.dashboard .step-tabs button { color: var(--muted); padding: 2px 0 6px; }
 .dashboard .step-tabs button.active, .dashboard .step-tabs button:hover { color: var(--ink); }
-.dashboard .step-tabs button.active::after { height: 3px; }
 
-/* Fluchten: Chevron ans rechte Spaltenende, Texte und Eingaben bündig an der linken Kante */
 .dashboard .routines-head, .day-view .routines-head { gap: 8px; }
 .dashboard .routines-head .chev, .day-view .routines-head .chev { order: 3; margin-left: auto; }
 .dashboard .add-row input, .day-view .add-row input { padding-left: 0; }
 .dashboard .add-agenda, .day-view .add-agenda { max-width: none; }
 
-/* Fließtext, Felder, Zahlen */
-.dashboard .log-row, .day-view .log-row { font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--ink); }
-.dashboard .log-row input, .dashboard .log-row select, .day-view .log-row input, .day-view .log-row select { font-size: 14px; font-weight: 600; padding-left: 0; }
-.dashboard .log-unit, .day-view .log-unit { font-size: 11px; color: var(--muted); }
-.dashboard .marker-tag, .day-view .marker-tag { font-size: 11px; letter-spacing: 0; text-transform: none; }
-.dashboard .dash-tag, .dashboard .dash-crumb, .dashboard .dash-overdue-tag { letter-spacing: 0; }
+.dashboard .log-row, .day-view .log-row { font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.dashboard .log-row input, .dashboard .log-row select, .day-view .log-row input, .day-view .log-row select { font-size: 13px; padding-left: 0; }
+.dashboard .marker-tag, .day-view .marker-tag { letter-spacing: 0; text-transform: none; }
 .dashboard .star.active { color: var(--ink); }
 
-/* Timer: plakative Ziffern, Start als schwarzer Block über die Spaltenbreite */
-.dashboard .timer-display { font-size: 68px; font-weight: 900; letter-spacing: -0.04em; line-height: 0.9; margin: 14px 0 14px -3px; } /* -3px: optischer Randausgleich der Ziffer */
-.dashboard .timer-controls .timer-btn { flex: 1; padding: 10px 16px; }
+/* Timer: zurückhaltend */
+.dashboard .timer-display { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; margin: 12px 0 12px; }
 
-@media (max-width: 1180px) { .dashboard, .day-view { zoom: 1.06; --gut: 32px; } }
 @media (max-width: 900px) {
-  .dashboard, .day-view { zoom: 1; }
   .dashboard .dash-row-top { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .dashboard .dash-tasks-col { grid-column: auto; }
   .dashboard .dash-row-bottom { gap: 32px; margin-top: 32px; }
 }
-@media (max-width: 600px) {
-  .dashboard .day-title, .day-view .day-title { font-size: 26px; }
-  .dashboard .timer-display { font-size: 56px; }
-}
+@media (max-width: 1180px) and (min-width: 901px) { .dash-row-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .dashboard .day-title, .day-view .day-title { font-size: 22px; } }
+
+/* ---------- Dasselbe System für alle Reiter ----------
+   Seitentitel linksbündig wie der Tagestitel, Umschalter linksbündig, Abschnitte hängen an einer
+   feinen schwarzen Linie, Labels in Versalien mit leichter Sperrung. */
+.board-title { text-align: left; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; padding: 22px 0 16px; }
+.seg { justify-content: flex-start; gap: 24px; }
+.seg button { font-size: 11px; letter-spacing: 0.06em; }
+.tab { font-size: 12px; letter-spacing: 0.06em; }
+.section-title, .char-h { font-size: 11px; letter-spacing: 0.06em; border-bottom: none; border-top: 1px solid var(--ink); padding: 12px 0 0; margin-bottom: 16px; }
+.col-head, .group-label { letter-spacing: 0.06em; }
+.board, .ev-board { margin-left: 0; }
+.board.detail .col-list, .board.detail .col-steps { border-right: none; }
+.board.detail .col-list, .board.detail .col-steps, .board.detail .col-notes { border-top: 1px solid var(--ink); padding-top: 12px; }
+.board.detail { gap: 40px; }
+.board.detail .col-list { padding-right: 0; }
+.board.detail .col-steps { padding: 12px 0 0; }
+.board.detail .col-notes { padding-left: 0; }
+.char-attrs { border-top: 1px solid var(--ink); border-bottom: none; }
+.journal-week-head { border-bottom: 1px solid var(--hair); }
+.journal-week-label { font-family: var(--mono); letter-spacing: 0.02em; }
+.backup-bar { border-top-color: var(--ink); }
 
 /* Zähler im einklappbaren Block-Header (Tageswerte x/y, Journal-Einträge) */
-.dash-count { margin-left: 8px; font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.dash-count { margin-left: 4px; font-size: 10px; font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.board.detail .col-list { border-top: none; padding-top: 0; } /* Bereichstitel tragen hier die Linie */
+.char { margin: 0; }
