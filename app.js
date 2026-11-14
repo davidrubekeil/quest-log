@@ -1866,24 +1866,63 @@
       ${dashTab === 'offen' ? `<form class="add-row add-agenda" data-action="add-agenda" data-date="${dateStr}"><input type="text" placeholder="${isToday ? 'Aufgabe für heute …' : 'Aufgabe für diesen Tag …'}" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="Hinzufügen">${ICONS.plus}</button></form>` : ''}
     </div>`;
 
+    // Module als Kästen auf einem sichtbaren Quadratraster; Position und Höhe rastet layoutDashGrid() ein.
     return `<div class="dashboard">
-      <div class="day-head"><span class="day-title">${dayTitle(d)}</span></div>
-      <div class="dash-row-top">
-        <div class="dash-tasks-col">
-          ${termine}
-          ${topBox}
-          ${overdueBox}
-          ${tasksBox}
-        </div>
-        ${isToday ? `<div class="dash-timer-col">${renderTimerBox()}</div>` : ''}
-      </div>
-      <div class="dash-row-bottom">
-        <div class="dash-col">${renderDayLog(dateStr)}</div>
-        <div class="dash-col">${renderDayNotes(dateStr)}${(isToday && isDashOpen('journal')) ? renderStravaBox(dateStr) : ''}</div>
-        <div class="dash-col">${isToday ? renderRoutines() : ''}</div>
+      <div class="dash-grid">
+        <section class="gbox gbox-title" data-g="title"><div class="gbox-in"><h1 class="day-title">${dayTitle(d)}</h1></div></section>
+        <section class="gbox" data-g="tasks"><div class="gbox-in">${termine}${topBox}${overdueBox}${tasksBox}</div></section>
+        ${isToday ? `<section class="gbox" data-g="timer"><div class="gbox-in">${renderTimerBox()}</div></section>` : ''}
+        <section class="gbox" data-g="c1"><div class="gbox-in">${renderDayLog(dateStr)}</div></section>
+        <section class="gbox" data-g="c2"><div class="gbox-in">${renderDayNotes(dateStr)}${(isToday && isDashOpen('journal')) ? renderStravaBox(dateStr) : ''}</div></section>
+        ${isToday ? `<section class="gbox" data-g="c3"><div class="gbox-in">${renderRoutines()}</div></section>` : ''}
       </div>
     </div>`;
   }
+
+  /* Rastet die Dashboard-Kästen auf das Quadratraster ein: Spaltenzahl so, dass drei gleich breite
+     Spalten mit je einer Leerzelle dazwischen exakt aufgehen (3k + 2), Kastenhöhen auf volle Zellen
+     aufgerundet, zwischen den Reihen eine leere Zellreihe. Schmal: alle Kästen untereinander. */
+  function layoutDashGrid() {
+    const g = view.querySelector('.dash-grid');
+    if (!g) return;
+    const cell = parseFloat(getComputedStyle(g).getPropertyValue('--cell')) || 40;
+    let n = Math.max(6, Math.floor((g.parentElement.clientWidth - 1) / cell));
+    const k = Math.floor((n - 2) / 3), wide = k >= 6;
+    if (wide) n = 3 * k + 2;
+    g.style.gridTemplateColumns = `repeat(${n}, ${cell}px)`;
+    g.style.width = `${n * cell + 1}px`;
+    const box = {};
+    for (const b of g.querySelectorAll('.gbox')) box[b.dataset.g] = b;
+    const cols = wide
+      ? { tasks: [1, 2 * k + 1], timer: [2 * k + 3, k], c1: [1, k], c2: [k + 2, k], c3: [2 * k + 3, k] }
+      : { tasks: [1, n], timer: [1, n], c1: [1, n], c2: [1, n], c3: [1, n] };
+    // Titelkasten nur so breit wie der Titel (aufgerundet auf Zellen).
+    if (box.title) {
+      const t = box.title.querySelector('.day-title'), pad = 2 * parseFloat(getComputedStyle(box.title).paddingLeft);
+      box.title.style.gridColumn = `1 / span ${n}`;
+      cols.title = [1, Math.min(n, Math.ceil((t.scrollWidth + pad + 2) / cell))];
+    }
+    // Messen bei endgültiger Breite, dann Zeilen zuweisen.
+    const span = {};
+    for (const [key, b] of Object.entries(box)) {
+      b.style.gridColumn = `${cols[key][0]} / span ${cols[key][1]}`;
+      b.style.gridRow = '1'; b.style.alignSelf = 'start';
+    }
+    for (const [key, b] of Object.entries(box)) span[key] = Math.max(1, Math.ceil((b.offsetHeight - 1) / cell));
+    const place = (key, row) => { const b = box[key]; if (!b) return row; b.style.gridRow = `${row} / span ${span[key]}`; b.style.alignSelf = 'stretch'; return row + span[key]; };
+    let r = place('title', 1) + 1;
+    if (wide) {
+      r = Math.max(place('tasks', r), box.timer ? place('timer', r) : r) + 1;
+      r = Math.max(place('c1', r), place('c2', r), box.c3 ? place('c3', r) : r) + 1;
+    } else {
+      for (const key of ['tasks', 'timer', 'c1', 'c2', 'c3']) if (box[key]) r = place(key, r) + 1;
+    }
+    g.style.gridTemplateRows = `repeat(${r}, ${cell}px)`;
+    g.style.height = `${r * cell + 1}px`;
+  }
+  let gridRaf = 0;
+  window.addEventListener('resize', () => { cancelAnimationFrame(gridRaf); gridRaf = requestAnimationFrame(layoutDashGrid); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => layoutDashGrid());
 
   /* Dashboard für heute und künftige Tage; vergangene Tage weiterhin als einfache Liste. */
   function renderDay(byDate) { return calCursor >= todayStr() ? renderDashboard(calCursor) : renderPlainDay(byDate); }
@@ -2352,6 +2391,7 @@
     view.innerHTML = activeTab === 'calendar' ? renderCalendar() : activeTab === 'quests' ? renderQuests() : activeTab === 'archive' ? renderArchiveTab() : activeTab === 'character' ? renderCharacter() : renderLists();
     if (refocusSel) { const el = view.querySelector(refocusSel); if (el) el.focus(); refocusSel = null; }
     if (pendingEditSel) { const el = view.querySelector(pendingEditSel); pendingEditSel = null; if (el) startEdit(el); }
+    layoutDashGrid();
   }
 
   /* ---------- Inline-Umbenennen ---------- */

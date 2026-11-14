@@ -16,7 +16,7 @@
   --flow:  #5C7A5E;                    /* „Laufend"-Marker (gedecktes Grün) */
 
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --grotesk: ui-monospace, "SF Mono", Menlo, Consolas, monospace; /* eine Schrift für alles */
+  --grotesk: "Helvetica Neue", Helvetica, Arial, sans-serif; /* Überschriften; Fließtext bleibt Mono */
 }
 
 html { -webkit-text-size-adjust: 100%; }
@@ -1525,77 +1525,102 @@ input { font: inherit; color: inherit; }
 .char-chip i.bad { color: var(--red); }
 @media (max-width: 760px) { .char-summary { margin-left: 22px; flex-basis: 100%; } }
 
-/* ---------- Dashboard-Theme (Tagesdashboard + Tagesansicht) ----------
-   Swiss Style in Mono: Dreispalten-Raster (oben 2 + 1, unten 1 + 1 + 1), jedes Modul hängt an
-   einer feinen schwarzen Linie, sonst keine Trenner. Hierarchie über Größe, Gewicht, Versalien. */
-.dashboard, .day-view { --gut: 40px; font-variant-numeric: tabular-nums; }
-.dashboard .day-head, .day-view .day-head { margin: 4px 0 26px; padding: 0; border: none; }
-.dashboard .day-title, .day-view .day-title { display: block; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-transform: uppercase; }
+/* ---------- Grid-Design (nach dem Vorbild sichtbarer Quadratraster) ----------
+   Überschriften: Grotesk, Versalien, normales bis mittleres Gewicht. Text: kleine Mono.
+   Links: rot, unterstrichen. Dashboard: Kästen aus Papier, die exakt auf dem Raster sitzen. */
+.dashboard, .day-view { font-variant-numeric: tabular-nums; }
+.dash-grid {
+  --cell: 40px;
+  --grid-line: rgba(26, 20, 18, 0.32);
+  display: grid;
+  grid-auto-rows: var(--cell);
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+}
+.gbox {
+  position: relative;
+  min-width: 0;
+  margin: 0 -1px -1px 0;           /* rechte/untere Kante liegt auf der nächsten Rasterlinie */
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 18px 20px 20px;
+  overflow: hidden;
+}
+.gbox-title { padding: 0 20px; display: flex; align-items: center; }
+.gbox-title .gbox-in { width: 100%; }
+.dashboard .day-title { display: inline-block; white-space: nowrap; font-family: var(--grotesk); font-size: 44px; font-weight: 500; letter-spacing: -0.015em; line-height: 1; text-transform: uppercase; }
+.day-view .day-head { margin: 4px 0 26px; }
+.day-view .day-title { font-family: var(--grotesk); font-size: 34px; font-weight: 500; letter-spacing: -0.015em; text-transform: uppercase; }
 
-.dashboard .dash-row-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gut); align-items: start; }
-.dashboard .dash-tasks-col { grid-column: span 2; }
-.dashboard .dash-timer-col { width: auto; }
-.dashboard .dash-row-bottom { gap: var(--gut); margin-top: 40px; }
-
-.dashboard .dash-tasks-col, .dashboard .dash-timer, .dashboard .dash-col:not(:empty),
-.day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch { border-top: 1px solid var(--ink); padding-top: 12px; }
-.dashboard .dash-top, .dashboard .dash-timer, .dashboard .dash-log, .dashboard .dash-scratch, .dashboard .dash-routines { background: none; margin: 0; }
-.dashboard .dash-top, .dashboard .dash-log, .dashboard .dash-scratch, .dashboard .dash-routines { border: none; padding: 0; }
-.dashboard .dash-tasks-col > :first-child { margin-top: 0; }
-.dashboard .dash-tasks { margin-top: 26px; }
-.dashboard .dash-overdue { margin-top: 26px; padding: 0; border: none; }
-.day-view .day-notes-block { border-top: none; padding-top: 0; }
-.day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch { margin: 28px 0 0; }
-
-.dashboard .dash-label, .day-view .dash-label, .dashboard .step-tabs button, .day-view .day-group-label,
-.dashboard .routine-group-label, .day-view .routine-group-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.dashboard .dash-label, .day-view .dash-label, .day-view .day-group-label { color: var(--ink); margin-bottom: 12px; }
+/* Kasten-Inhalte */
+.gbox .dash-top, .gbox .dash-tasks, .gbox .dash-overdue, .gbox .dash-timer, .gbox .dash-log, .gbox .dash-scratch, .gbox .dash-routines, .gbox .dash-termine { margin: 0; padding: 0; border: none; background: none; }
+.gbox .dash-top { margin-bottom: 22px; }
+.gbox .dash-overdue { margin-bottom: 22px; }
+.dashboard .dash-label, .day-view .dash-label, .day-view .day-group-label {
+  font-family: var(--grotesk); font-size: 20px; font-weight: 500; letter-spacing: -0.005em; text-transform: uppercase; color: var(--ink); margin-bottom: 14px;
+}
 .dashboard .dash-label.warn { color: var(--red); }
-.dashboard .dash-hint { font-weight: 400; letter-spacing: 0; text-transform: none; }
-.dashboard .routine-group-label, .day-view .routine-group-label { font-size: 10px; color: var(--muted); }
-.dashboard .step-tabs button { color: var(--muted); padding: 2px 0 6px; }
-.dashboard .step-tabs button.active, .dashboard .step-tabs button:hover { color: var(--ink); }
-
+.dashboard .dash-hint { font-family: var(--mono); font-size: 11px; font-weight: 400; text-transform: none; color: var(--muted); }
 .dashboard .routines-head, .day-view .routines-head { gap: 8px; }
 .dashboard .routines-head .chev, .day-view .routines-head .chev { order: 3; margin-left: auto; }
-.dashboard .add-row input, .day-view .add-row input { padding-left: 0; }
-.dashboard .add-agenda, .day-view .add-agenda { max-width: none; }
-
+.dash-count { font-family: var(--mono); }
+.dashboard .routine-group-label, .day-view .routine-group-label { font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.dashboard .row-text, .day-view .row-text { font-size: 13px; }
 .dashboard .log-row, .day-view .log-row { font-size: 12px; letter-spacing: 0; text-transform: none; color: var(--ink); }
-.dashboard .log-row input, .dashboard .log-row select, .day-view .log-row input, .day-view .log-row select { font-size: 13px; padding-left: 0; }
-.dashboard .marker-tag, .day-view .marker-tag { letter-spacing: 0; text-transform: none; }
+.dashboard .log-row input, .dashboard .log-row select { padding-left: 0; }
+.dashboard .add-row input, .day-view .add-row input { padding-left: 0; font-size: 12px; }
+.dashboard .add-agenda, .day-view .add-agenda { max-width: none; }
 .dashboard .star.active { color: var(--ink); }
+.dashboard .marker-tag { letter-spacing: 0; text-transform: none; }
 
-/* Timer: zurückhaltend */
-.dashboard .timer-display { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; margin: 12px 0 12px; }
+/* Umschalter in Mono, aktiv = unterstrichen */
+.dashboard .step-tabs { gap: 18px; }
+.dashboard .step-tabs button { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--muted); padding: 0 0 2px; }
+.dashboard .step-tabs button.active { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.dashboard .step-tabs button.active::after { display: none; }
 
-@media (max-width: 900px) {
-  .dashboard .dash-row-top { grid-template-columns: minmax(0, 1fr); gap: 32px; }
-  .dashboard .dash-tasks-col { grid-column: auto; }
-  .dashboard .dash-row-bottom { gap: 32px; margin-top: 32px; }
+/* Timer: Grotesk-Ziffern, ruhig */
+.dashboard .timer-display { font-family: var(--grotesk); font-size: 40px; font-weight: 500; letter-spacing: -0.02em; line-height: 1; margin: 12px 0 14px; }
+.dashboard .timer-btn { font-family: var(--mono); font-weight: 400; letter-spacing: 0.04em; }
+
+/* Links rot und unterstrichen */
+.strava-btn { text-decoration: underline; text-underline-offset: 3px; }
+
+/* vergangene Tage: dieselbe Typografie, Module an feinen Linien */
+.day-view .day-notes-block { border-top: none; padding-top: 0; }
+.day-view .dash-routines, .day-view .dash-log, .day-view .dash-scratch { margin: 28px 0 0; padding-top: 12px; border-top: 1px solid var(--ink); }
+
+@media (max-width: 760px) {
+  .dash-grid { --cell: 32px; }
+  .gbox { padding: 14px 14px 16px; }
+  .gbox-title { padding: 0 14px; }
+  .dashboard .day-title { font-size: 26px; white-space: normal; }
+  .dashboard .dash-label { font-size: 17px; }
+  .view { padding-left: 16px; padding-right: 16px; }
+  .cal-toolbar { flex-wrap: wrap; row-gap: 10px; }
+  .gbox .dash-task > .row { flex-wrap: wrap; }
+  .gbox .dash-overdue-tag, .gbox .dash-crumb { order: 9; flex-basis: 100%; padding-left: 28px; max-width: none; }
 }
-@media (max-width: 1180px) and (min-width: 901px) { .dash-row-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 600px) { .dashboard .day-title, .day-view .day-title { font-size: 22px; } }
 
-/* ---------- Dasselbe System für alle Reiter ----------
-   Seitentitel linksbündig wie der Tagestitel, Umschalter linksbündig, Abschnitte hängen an einer
-   feinen schwarzen Linie, Labels in Versalien mit leichter Sperrung. */
-.board-title { text-align: left; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; padding: 22px 0 16px; }
-.seg { justify-content: flex-start; gap: 24px; }
-.seg button { font-size: 11px; letter-spacing: 0.06em; }
-.tab { font-size: 12px; letter-spacing: 0.06em; }
-.section-title, .char-h { font-size: 11px; letter-spacing: 0.06em; border-bottom: none; border-top: 1px solid var(--ink); padding: 12px 0 0; margin-bottom: 16px; }
-.col-head, .group-label { letter-spacing: 0.06em; }
+/* ---------- Dasselbe System für alle Reiter ---------- */
+.tab { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.tab.active { text-decoration: underline; text-underline-offset: 4px; }
+.tab.active::after { display: none; }
+.board-title { text-align: left; font-size: 44px; font-weight: 500; letter-spacing: -0.015em; padding: 18px 0 14px; }
+.seg { justify-content: flex-start; gap: 18px; }
+.seg button { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; padding: 2px 0 4px; }
+.seg button.active { text-decoration: underline; text-underline-offset: 3px; }
+.seg button.active::after { display: none; }
+.section-title, .char-h { font-size: 18px; font-weight: 500; letter-spacing: -0.005em; border-bottom: none; border-top: 1px solid var(--ink); padding: 12px 0 0; margin-bottom: 16px; }
 .board, .ev-board { margin-left: 0; }
-.board.detail .col-list, .board.detail .col-steps { border-right: none; }
-.board.detail .col-list, .board.detail .col-steps, .board.detail .col-notes { border-top: 1px solid var(--ink); padding-top: 12px; }
 .board.detail { gap: 40px; }
+.board.detail .col-list, .board.detail .col-steps { border-right: none; }
+.board.detail .col-steps, .board.detail .col-notes { border-top: 1px solid var(--ink); padding: 12px 0 0; }
 .board.detail .col-list { padding-right: 0; }
-.board.detail .col-steps { padding: 12px 0 0; }
-.board.detail .col-notes { padding-left: 0; }
+.char { margin: 0; }
 .char-attrs { border-top: 1px solid var(--ink); border-bottom: none; }
-.journal-week-head { border-bottom: 1px solid var(--hair); }
-.journal-week-label { font-family: var(--mono); letter-spacing: 0.02em; }
 .backup-bar { border-top-color: var(--ink); }
 
 /* Zähler im einklappbaren Block-Header (Tageswerte x/y, Journal-Einträge) */
